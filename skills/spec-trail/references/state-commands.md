@@ -7,6 +7,7 @@
 | 命令 | 参数与语义 |
 | --- | --- |
 | `create` | `--title --size`；可选 `--depends-on id,id`、`--parent id`、`--children id,id`。在当前非守护分支建立 requirement 状态，不生成正文、不创建或切换 Git 分支、不覆盖已有目录。 |
+| `retitle` | `--title`；仅修改活动 Change 的展示标题，保留 id、阶段、任务与确认；需在所属分支运行。 |
 | `confirm` | `--phase requirement/technical/plan/merge --summary --source`。记录已有明确确认；需求确认进入 technical，large 技术确认进入 plan；执行另用 execute。medium/xlarge 技术与计划同次获确认时连续记录两次。merge 可附 `--source-commit --target-commit --base-commit`。 |
 | `task-add` | `--title`；可选 `--task Tn --branch`，默认分配下一个编号。完成任务不可覆盖，返修追加任务并更新 Plan。 |
 | `task-start` | `--task Tn`；检查当前执行安排与整条前置链均已完成，再从 todo/blocked → doing，并移除旧阻塞原因。 |
@@ -21,7 +22,7 @@
 | `specs` | `--result synced/not_needed --summary`；验收后实际同步 Specs，再记录结果。 |
 | `archive` | `--date YYYY-MM-DD --summary`；日期按用户时区提供；检查关闭前置后移动完整目录，记录 completed。携带 previews 时输出原型保留标签后续命令。 |
 | `cancel` | `--reason`；保留阶段、任务、正文和代码，写取消原因并清除等待，分支冻结。 |
-| `previews-set` | `--file /临时/entries.json`；文件只含 PreviewEntry 数组，替换关联而保留其他状态。新增/更新要求 enabled 且输出文件存在，停用后仍允许删除旧关联。 |
+| `previews-set` | `--file /临时/entries.json`；文件只含 PreviewEntry 数组，替换关联而保留其他状态。新增/更新要求 enabled，hosted 校验引用与源码提交，Git 来源要求对应输出文件存在，停用后仍允许删除旧关联。 |
 
 ## 常用流程
 

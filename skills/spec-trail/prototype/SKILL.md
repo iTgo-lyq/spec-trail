@@ -1,74 +1,102 @@
 ---
 name: spec-trail-prototype
-description: SpecTrail 的原型子 skill。在用户同意后接入项目内单一原型包，复用设计规范，开发并导出自包含 HTML，将页面或组件关联到 Change，维护归档预览引用。由主 skill 技术阶段按需加载。
+description: SpecTrail 的可选原型协作：宿主自行构建和托管，维护项目当前入口与 Change 固定版本引用，支持 Git 单 HTML 兜底。
 ---
 
 # SpecTrail Prototype
 
-原型与 Change 一起管理。每项目一个 monorepo 包，默认 `packages/prototype/`；源码自由组织，页面和组件共用设计标准及依赖。工作台只读已推送静态产物，不编辑、不构建、不调度 Agent。工作台以 Change 关联提供项目原型总览。无模板服务、单独原型清单或截图要求。
+每项目一个原型包，默认 `packages/prototype`。宿主维护源码、mock、构建和静态托管；OpenFolio 只读引用，不编译源码、不接收上传或运行宿主命令。UI 组件库的独立预览不自动进入项目原型清单。
 
-## 接入选择
+## 接入与设计
 
-先读项目 AGENTS.md、现有设计标准、组件库、workspace 配置与 `docs/project/workflow.json.prototype`，并核对用户当前明确选择。配置基线是 OpenFolio 项目的 specBranch，未指定时为远端默认分支；切换旧分支不能抹去基线的拒绝决定。获取不到基线时说明缺失，不猜测已获同意。
-
-- 缺失：技术方案确实受益于原型时，说明用途并征求同意。已有明确同意直接沿用。
-- disabled：不重复提议，不新增非空 previews；只有用户明确要求重新启用才接入。普通 Change 推进和删除旧关联不受阻。
-- pending：保留初始化失败现场，修复缺失后再启用。
-- enabled：复用现有包，不再安装、创建第二个包或重复确认。
-
-本子 skill 随主 skill 分发，未安装时补齐 `prototype/` 子目录，不创建独立顶层 skill。详细契约由 [contract.mjs](./scripts/contract.mjs) 与主 skill 的状态类型共同约束。
-
-本地辅助脚本使用 Node.js 24 或更新版本，不安装第三方运行依赖。在仓库根运行（脚本路径均相对此 skill）：
+读取 AGENTS、设计规范、现有组件及 `workflow.json.prototype`，基线为已推送 main。未选择时按需询问；disabled 不重复建议；pending 修复接入；enabled 复用已有包。已启用且 Change 明显改变 UI 时，建议优先画或更新原型，未采用建议或没有 previews 都不阻断流程。
 
 ```bash
-node .agents/skills/spec-trail/prototype/scripts/setup.mjs --accept --summary '用户本次明确同意的依据' --package packages/prototype --design docs/design.md
-node .agents/skills/spec-trail/prototype/scripts/setup.mjs --decline --summary '用户本次明确拒绝的依据'
+node .agents/skills/spec-trail/prototype/scripts/setup.mjs --accept --summary '实际用户同意' --package packages/prototype
+node .agents/skills/spec-trail/prototype/scripts/setup.mjs --decline --summary '实际用户拒绝'
 ```
 
-`--design` 可省略；已有规范时提供实际路径并在 DESIGN.md 引用，不复制出第二份规范。没有规范时与项目上下文一起建立单一标准。setup 先写 pending，创建或检查包，成功才写 enabled。脚本不覆盖已有包或文档；已有工程需要调整构建时由用户 Agent 在包内完成，再运行 `--enable`。遇到包路径冲突、符号链接、workspace 冲突时保留现状，做具体修复，不另起一套包。
+setup 不安装框架，不覆盖已有文件；采用现有工程时提供 package.json、AGENTS、DESIGN 和合法 prototype.json，再运行 --enable。保留原包管理器，原型包 private:true。源码可用 HTML、React 及项目 UI 包，宿主保证正常 build 与浏览器交互，局部状态和 mock 不依赖真实业务服务或持久存储。
 
-检查 npm/yarn/pnpm workspace 已实际包含此包，保留原包管理器与锁文件；脚本不会替用户安装框架。原型包 private:true，生产应用不依赖它。提交选择、包源码和输出，并将选择发布到服务配置基线；未发布前工作台不会启用追踪。
+## 当前清单
 
-## 开发与交付
+`<packagePath>/prototype.json` 是 main 总览唯一清单，Git 保存源码及描述，dist 默认忽略。格式由 [共享契约](./scripts/contract.mjs) 校验：
 
-基础工程只提供静态 HTML、共享 CSS 和零依赖导出示例；用户可替换源码组织和构建工具。优先使用项目组件库、字体、颜色、间距和交互规范；后端耦合组件用局部 mock 适配并写明差异。不要把界面示意说成产品已实现。
+```json
+{
+  "schemaVersion": 1,
+  "entries": [
+    {"id":"orders","title":"订单列表","description":"包含筛选与空态","sourcePath":"packages/prototype/src/orders.tsx","kind":"page","devices":["pc-web","mobile"]}
+  ]
+}
+```
 
-运行服务采用同域 `sandbox="allow-scripts"` 和 CSP，未授予 allow-same-origin。交付约定：
+id 稳定且项目内唯一；名称可改。component 在 devices 和 1–4096 CSS px 的 viewport 中二选一。artifact 缺失表示未交付。删除 main 清单项即从总览移除，不清除旧发布或 Change 历史；源码或主题变化不强制重发所有参考原型。
 
-- 每个关联目录是 `<包路径>/preview/<入口>/`，内含 UTF-8、自包含 `index.html`。
-- 脚本、样式和 mock 数据内联，图片/字体用 data URL。不留外部 import、动态 chunk、资源 fetch、CSS @import、外链或 iframe。用 hash/memory 路由和页面内存状态；不能依赖 Cookie、localStorage、IndexedDB、Worker、eval 或真实业务接口。
-- 一套源码导出多个 HTML，可复用源组件和素材。基础导出器识别 `src/pages/<id>.html` 中的 `{{include:相对路径}}` 和 `{{data:相对素材路径}}`；其他框架须自行配置离线导出，不假设普通 Vite dist 就满足协议。
-- Git 跟踪源码、锁文件、设计引用及 preview 输出；排除依赖、缓存、日志和 sourcemap。不要在产物放密钥。单入口默认上限 10 MiB，具体服务限额可配置。
-- 删除入口前检查其他活动 Change 的引用，不因构建一个入口就清空其他交付。
+## 宿主发布
 
-先运行包的构建，再执行校验：
+先提交源码，以干净提交运行宿主正常构建；上传和存储凭据仅由宿主环境注入。准备协议请求：
+
+```bash
+# entries.json 是 [{"id":"orders","entryPath":"index.html","hash":"#/orders"}]
+node .agents/skills/spec-trail/prototype/scripts/publish.mjs prepare --directory packages/prototype/dist --entries /tmp/entries.json --repository https://example.org/team/project.git --out /tmp/request.json
+# 宿主自己的发布程序读取 request.json，上传到自己的静态托管并生成 result.json。
+node .agents/skills/spec-trail/prototype/scripts/publish.mjs register --request /tmp/request.json --result /tmp/result.json --change change-id
+```
+
+请求包含 schemaVersion、repository、sourceCommit、artifactDirectory、digest、entries、requestId。requestId 基于内容和入口确定；实现见 [publishing.mjs](./scripts/publishing.mjs)，[文件系统宿主示例](./examples/filesystem-host.mjs) 可用于 CI 挂载的静态存储和测试，不是 OpenFolio 托管服务。
+
+成功结果包含 schemaVersion:1、status:published、原 requestId/sourceCommit/digest、固定 version 及 entries；每项是 id/url，可提供 thumbnails 数组（device/url；固定 PNG/WebP）。失败返回 status:failed、requestId、code、message、retryable。宿主先完整上传再原子发布，重复请求返回同版本，绝不覆盖旧版本字节；失败不替换引用，也不自动提交 dist。
+
+登记命令校验结果后一起更新当前 artifact 与可选 Change previews；无 --change 可只更新当前清单。多文件更新中断后运行 `publish.mjs recover`，遇到新用户编辑停止恢复，不覆盖。若进程异常退出遗留 Git common-dir 下的 `spec-trail-state.lock`，命令不会抢占锁：先读取其中的 owner.json（PID、主机、工作区、开始时间），核实对应主机上的进程已结束、仓库无其他状态操作并检查工作区及事务日志，再清理已确认失效的锁目录，重新运行 recover。没有 owner.json 的共享锁也必须先核实持锁进程；无法确认时保留锁与日志。不要删除事务日志来绕过恢复。随后提交推送；引用进入 main 才更新总览。Change 保留自己的显示信息、视口、固定地址和构建源码 commit，不跟随当前清单变化。发布地址只用无凭据、无 query 的 HTTPS，可用 hash 路由；不提交签名 URL、临时令牌或上传密钥。
+
+宿主负责保留被历史引用的版本。Git 标签仅保留记录和源码，不能代替外部存储的保留承诺。
+
+## 嵌入与验证
+
+服务管理员在项目配置 prototypeOrigins 登记精确 HTTPS origin。使用独立静态来源，允许工作台嵌入；iframe 保留 `sandbox="allow-scripts"`，不授予 allow-same-origin。ESM、动态模块和字体等静态资源需允许无 Cookie 的 CORS（如 Access-Control-Allow-Origin:*），路由使用 hash/memory。宿主响应 CSP 约束自己的资源和连接，OpenFolio 不代理登录、下载或转发凭据；不兼容的登录流只能由用户在宿主窗口打开。
+
+宿主可使用 [就绪桥接](./scripts/bridge.mjs) 回复工作台的 ready/error 握手。未确认就绪时工作台显示未确认，iframe load 不等于应用成功。
 
 ```bash
 node .agents/skills/spec-trail/prototype/scripts/validate.mjs
 node .agents/skills/spec-trail/prototype/scripts/validate.mjs --browser
 ```
 
-浏览器检查使用工程已安装的 `@playwright/test`；其他环境可用 `--playwright /实际模块入口` 指定已有安装。未安装时按项目惯例接入浏览器测试，不把“静态检查通过”冒充完整验证。检查关键交互及声明视口，确保没有依赖网络、存储或真实设备能力；脚本只检查初始加载，不能代替操作验证。
+浏览器检查使用宿主安装的 Playwright；可用 --playwright 指向已有模块。静态检查不代替浏览器检查，初始加载也不代替关键交互及各声明视口验证。宿主可按视口提供截图引用，缺失时总览使用占位；不要求 OpenFolio 服务联网截图。
 
-## 关联 Change
+## Git 兜底
 
-将关联数组写入临时 JSON 文件，调用主 skill 的 `change.mjs previews-set --change <id> --file <临时文件>`；脚本仅更新 `change.json.previews` 并保留其他状态字段，不生成 prototype.json。关联只在项目 enabled 后新增；id 为当前 Change 内唯一 kebab-case，标题非空，path 是包内 preview 入口目录。多个 Change 可以复用同一入口。
+显式采用 Git 兜底时，宿主生成 `<packagePath>/preview/<id>/index.html` 自包含 UTF-8 HTML，脚本/CSS/mock 内联，图片字体用 data URL；不允许外链资源、存储或真实业务请求。普通 Vite dist 不是单文件兜底，框架内联构建由宿主维护。
 
-```json
-[
-  {"id":"orders","title":"订单列表","path":"packages/prototype/preview/orders","kind":"page","devices":["pc-web","ipad","mobile"]},
-  {"id":"price-card","title":"价格卡片","path":"packages/prototype/preview/price-card","kind":"component","viewport":{"width":640,"height":320}}
-]
+```bash
+node .agents/skills/spec-trail/prototype/scripts/publish.mjs register --git-entry orders --change change-id
 ```
 
-page 使用非空、不重复 devices；component 在 devices 与 viewport 中二选一。宽高是 1–4096 的整数 CSS px。适配声明不是验证通过凭据，执行记录保存具体操作和结果。源码、关联与输出一起提交推送，hook 只认可暂存文件。OpenFolio 读取主来源提交，历史链接固定 revision；本地预览不代表已发布。
+该操作记录源码 commit，当前产物留在包内，并复制一份到 Change 的 previews/id；后续更新当前产物不覆盖旧 Change。归档操作移动快照并更新 artifact.path。不要因为构建一个入口就清空其他入口。
 
 ## 归档
 
-主 skill 完成验证、用户验收与 Specs 同步后，提交完整归档记录及原型产物。携带非空关联的归档需要保留 Git 引用；不移动原型目录，不复制源码进 Change 文档。
+主 skill 完成验证、人工验收与 Specs 同步后提交归档。非空 previews 继续需要保留标签：
 
 ```bash
-node .agents/skills/spec-trail/prototype/scripts/archive.mjs --change 实际-change-id --push
+node .agents/skills/spec-trail/prototype/scripts/archive.mjs --change change-id --push
 ```
 
-脚本验证 completed 归档和已有入口，创建 `spec-trail/archive/<id>` 标签，推送当前分支和标签并核对远端。无关联无需标签。相同提交可重试，同名不同提交停止并报告，不覆盖标签；网络或推送失败保留现场并说明尚未完成交付。旧分支删除后标签继续保留源码及产物；标签被管理员删除时服务明确不可用，不回退最新版。停用时已有归档标签和文件保留。
+分支与 `spec-trail/archive-v2/<id>` 标签均核实后才报告完成。相同提交可重试，不覆盖同名异提交标签。缺少标签或远端产物时明确说明，不回退其他版本。
+
+
+## 一次性旧存档迁移
+
+运行时只接受 artifact 引用，旧 previews.path 格式不再兼容。用户明确要求迁移旧存档后，在非守护分支运行：
+
+```bash
+node .agents/skills/spec-trail/prototype/scripts/migrate.mjs --change old-change
+# 原标签不存在时须提供原交付的完整 --revision。
+# 核对迁移字节与来源，提交推送后：
+node .agents/skills/spec-trail/prototype/scripts/archive.mjs --change old-change --push
+```
+
+迁移只从确定的原交付提交读取 HTML，复制到 Change 的 previews/id 并更新引用；保留其他历史事实，拒绝覆盖不同字节和之后已修改的关联。同参数可重试；中断后用 publish.mjs recover 恢复事务。源码提交采用所迁移的原交付提交，可由该提交核对当时源码及产物。
+
+新保留标签统一为 spec-trail/archive-v2/id，旧标签和 Git 历史不改写；迁移后分享新提交链接，旧格式固定链接不再预览。服务 pin 按新命名空间隔离，并保留旧缓存 pin；新标签一经观察同样禁止替换。

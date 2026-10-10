@@ -20,6 +20,7 @@ import { parseTaskOrder, unfinishedPredecessors } from "./task-order.mjs";
 const commands = {
   create: ["title", "size", "depends-on", "parent", "children"],
   show: [],
+  retitle: ["title"],
   confirm: [
     "phase",
     "summary",
@@ -379,6 +380,9 @@ function main() {
     switch (command) {
       case "create":
         break;
+      case "retitle":
+        state.title = need("title");
+        break;
       case "confirm": {
         const phase = need("phase");
         assert(
@@ -642,6 +646,17 @@ function main() {
         archiveDir = safe(`docs/project/archive/${date}-${id}`);
         assert(!existsSync(archiveDir), "Archive destination already exists");
         recordStep("archive", "done", { path: relative(root, archiveDir) });
+        for (const entry of state.previews ?? []) {
+          if (
+            entry.artifact?.type === "git" &&
+            entry.artifact.path.startsWith(
+              relative(root, liveDir) + "/previews/",
+            )
+          )
+            entry.artifact.path =
+              relative(root, archiveDir) +
+              entry.artifact.path.slice(relative(root, liveDir).length);
+        }
         state.status = "completed";
         break;
       }
@@ -663,7 +678,18 @@ function main() {
           );
         else
           for (const p of previews) {
-            const path = entryPath(p, config.prototype);
+            if (p.artifact) {
+              assert(
+                git(["cat-file", "-t", p.artifact.sourceCommit]) === "commit",
+                "Unknown source commit",
+              );
+              if (p.artifact.type === "hosted") continue;
+            }
+            const path = entryPath(
+              p,
+              config.prototype,
+              relative(root, liveDir),
+            );
             assert(
               path && existsSync(safe(path)) && lstatSync(safe(path)).isFile(),
               "Preview requires a regular index.html inside the configured preview directory",

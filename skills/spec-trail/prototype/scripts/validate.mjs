@@ -1,54 +1,146 @@
 #!/usr/bin/env node
-import { readFile, readdir, realpath, lstat } from 'node:fs/promises';
-import { resolve, join, relative } from 'node:path';
-import { createRequire } from 'node:module';
-import { pathToFileURL } from 'node:url';
-import { createServer } from 'node:http';
-import { validatePrototype, entryPath } from './contract.mjs';
-import { htmlIssues, sandboxCsp } from './html.mjs';
-const args=process.argv.slice(2), options={};
-for(let i=0;i<args.length;i++){const k=args[i];if(!['--repo','--browser','--playwright'].includes(k))throw Error(`Unknown option ${k}`);options[k]=k==='--browser'?true:args[++i];}
-let browser,server;
+import { readFile, readdir, realpath, lstat } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { resolve, join } from "node:path";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+import { createServer } from "node:http";
+import { parseArgs } from "node:util";
+import {
+  validatePrototype,
+  validateManifest,
+  currentPreview,
+  entryPath,
+} from "./contract.mjs";
+import { git, checkedPath } from "./publishing.mjs";
+import { htmlIssues, sandboxCsp } from "./html.mjs";
+let browser, server;
 try {
- const root=await realpath(resolve(options['--repo']||'.'));
- const cfg=JSON.parse(await readFile(join(root,'docs/project/workflow.json'),'utf8')).prototype;
- if(validatePrototype(cfg).length||cfg.status!=='enabled')throw Error('原型配置未启用或不合法');
- const preview=join(root,cfg.packagePath,'preview');
- const entries=[];
- for(const name of await readdir(preview)){
-  const item={id:name,title:name,path:`${cfg.packagePath}/preview/${name}`,kind:'page',devices:['pc-web']};
-  const path=entryPath(item,cfg);if(!path)continue;
-  const full=join(root,path);let st;try{st=await lstat(full)}catch(e){if(e.code==='ENOENT')continue;throw e;}
-  if(!st.isFile()||st.isSymbolicLink()||relative(await realpath(join(root,cfg.packagePath)),await realpath(full)).startsWith('..'))throw Error(`非法入口：${name}`);
-  if(st.size>10*1024*1024)throw Error(`入口超过 10 MiB：${name}`);
-  const html=await readFile(full,'utf8'),issues=htmlIssues(html);if(issues.length)throw Error(`${name}: ${issues.join('; ')}`);
-  entries.push({name,html});
- }
- if(!entries.length)throw Error('没有有效的 preview/<id>/index.html');
- if(options['--browser']){
-  const req=createRequire(join(root,'package.json'));
-  const modulePath=options['--playwright']||req.resolve('@playwright/test');
-  const playwright=await import(pathToFileURL(resolve(modulePath)).href);
-  const {chromium}=playwright.chromium ? playwright : playwright.default;
-  browser=await chromium.launch({headless:true});
-  let current;
-  server=createServer((request,response)=>{
-    response.setHeader('Content-Type','text/html; charset=utf-8');response.setHeader('Cache-Control','no-store');
-    if(request.url==='/'){response.end('<!doctype html><iframe sandbox="allow-scripts" src="/preview"></iframe>');return;}
-    if(request.url==='/preview'){response.setHeader('Content-Security-Policy',sandboxCsp);response.end(current.html);return;}
-    response.writeHead(404);response.end();
+  const { values: o } = parseArgs({
+    options: {
+      repo: { type: "string" },
+      browser: { type: "boolean" },
+      playwright: { type: "string" },
+    },
+    strict: true,
   });
-  await new Promise(r=>server.listen(0,'127.0.0.1',r));
-  const origin=`http://127.0.0.1:${server.address().port}`;
-  for(const item of entries){
-    current=item;const errors=[];const page=await browser.newPage();
-    page.on('pageerror',e=>errors.push(e.message));
-    page.on('console',msg=>{if(msg.type()==='error')errors.push(msg.text());});
-    await page.route('**/*',route=>{const url=route.request().url();if(url===origin+'/'||url===origin+'/preview')return route.continue();errors.push(`外部请求：${url}`);return route.abort();});
-    await page.goto(origin);await page.frames()[1].evaluate(()=>document.fonts.ready);await page.waitForTimeout(100);
-    await page.close();if(errors.length)throw Error(`${item.name}: ${errors.join('; ')}`);
+  const root = await realpath(resolve(o.repo ?? ".")),
+    cfg = JSON.parse(
+      await readFile(checkedPath(root, "docs/project/workflow.json"), "utf8"),
+    ).prototype;
+  if (validatePrototype(cfg).length || cfg.status !== "enabled")
+    throw Error("原型配置未启用或不合法");
+  const entries = [],
+    manifestPath = checkedPath(root, cfg.packagePath + "/prototype.json");
+  if (existsSync(manifestPath)) {
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")),
+      issues = validateManifest(manifest);
+    if (issues.length) throw Error(issues.join("; "));
+    for (const entry of manifest.entries)
+      if (entry.artifact) entries.push(currentPreview(entry));
   }
- }
- console.log(`Validated ${entries.length} self-contained entry(s)${options['--browser']?' in Chromium sandbox':' (static checks only; runtime/interaction checks still required)'}.`);
-}catch(e){console.error(`Prototype validation: ${e.message}`);process.exitCode=1;}
-finally{if(browser)await browser.close();if(server)await new Promise(r=>server.close(r));}
+  // Check explicit Git build output before registration as well.
+  const preview = checkedPath(root, cfg.packagePath + "/preview");
+  if (existsSync(preview))
+    for (const name of await readdir(preview)) {
+      const item = {
+        id: name,
+        title: name,
+        artifact: { type: "git", path: `${cfg.packagePath}/preview/${name}`, sourceCommit: git(root, ["rev-parse", "HEAD"]) },
+        kind: "page",
+        devices: ["pc-web"],
+      };
+      if (
+        entryPath(item, cfg) &&
+        !entries.some((e) => e.id === name) &&
+        existsSync(checkedPath(root, item.artifact.path + "/index.html"))
+      )
+        entries.push(item);
+    }
+  for (const entry of entries) {
+    if (entry.artifact?.type === "hosted") continue;
+    const path = entryPath(entry, cfg);
+    if (!path) throw Error("非法 Git 入口路径");
+    const full = checkedPath(root, path),
+      stat = await lstat(full);
+    if (!stat.isFile() || stat.size > 10 * 1024 * 1024)
+      throw Error("入口必须是 10 MiB 内的常规文件");
+    entry.html = new TextDecoder("utf-8", { fatal: true }).decode(
+      await readFile(full),
+    );
+    const issues = htmlIssues(entry.html);
+    if (issues.length) throw Error(`${entry.id}: ${issues.join("; ")}`);
+  }
+  if (!entries.length)
+    throw Error("没有已交付的原型入口；请构建并登记发布结果");
+  if (o.browser) {
+    const req = createRequire(join(root, "package.json"));
+    const mod = await import(
+      pathToFileURL(resolve(o.playwright ?? req.resolve("@playwright/test")))
+        .href
+    );
+    browser = await (mod.chromium ?? mod.default.chromium).launch({
+      headless: true,
+      chromiumSandbox: true,
+    });
+    let current;
+    server = createServer((request, response) => {
+      response.setHeader("Content-Type", "text/html; charset=utf-8");
+      if (request.url === "/") {
+        response.end(
+          `<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" src="${current.artifact?.type === "hosted" ? current.artifact.url.replaceAll("&", "&amp;").replaceAll('"', "&quot;") : "/preview"}"></iframe>`,
+        );
+        return;
+      }
+      if (request.url === "/preview" && current.html) {
+        response.setHeader("Content-Security-Policy", sandboxCsp);
+        response.end(current.html);
+        return;
+      }
+      response.writeHead(404).end();
+    });
+    await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    for (const entry of entries) {
+      current = entry;
+      const page = await browser.newPage(),
+        errors = [];
+      const hosted =
+        entry.artifact?.type === "hosted"
+          ? new URL(entry.artifact.url).origin
+          : null;
+      page.on("pageerror", (e) => errors.push(e.message));
+      page.on("console", (m) => {
+        if (m.type() === "error") errors.push(m.text());
+      });
+      page.on("response", (r) => {
+        if (r.status() >= 400) errors.push(`HTTP ${r.status()}`);
+      });
+      await page.route("**/*", (route) => {
+        const url = route.request().url();
+        if (
+          url === origin + "/" ||
+          (!hosted && url === origin + "/preview") ||
+          (hosted && new URL(url).origin === hosted)
+        )
+          return route.continue();
+        errors.push("Unexpected external resource");
+        return route.abort();
+      });
+      await page.goto(origin);
+      await page.frameLocator("iframe").locator("body").waitFor();
+      await page.waitForTimeout(150);
+      await page.close();
+      if (errors.length) throw Error(`${entry.id}: ${errors.join("; ")}`);
+    }
+  }
+  console.log(
+    `Validated ${entries.length} entry(s)${o.browser ? " in Chromium sandbox" : " (metadata/static checks only)"}. Host interactions and retention still require verification.`,
+  );
+} catch (e) {
+  console.error(`Prototype validation: ${e.message}`);
+  process.exitCode = 1;
+} finally {
+  if (browser) await browser.close();
+  if (server) await new Promise((r) => server.close(r));
+}

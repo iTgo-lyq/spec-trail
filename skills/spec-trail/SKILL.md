@@ -87,7 +87,10 @@ interface PrototypeConfig {
 interface PreviewEntry {
   id: string;
   title: string;
-  path: string; // 配置包下 preview 的入口目录，内含自包含 index.html
+  artifact: { type: "git"; path: string; sourceCommit: string } | {
+    type: "hosted"; version: string; url: string; sourceCommit: string; digest: string;
+    thumbnails?: { device?: "pc-web" | "ipad" | "mobile"; url: string }[];
+  }; // 固定产物引用，详细契约见原型子 skill
   kind: "page" | "component";
   devices?: ("pc-web" | "ipad" | "mobile")[]; // page 必填；去重、非空
   viewport?: { width: number; height: number }; // component 与 devices 二选一，1–4096 CSS px
@@ -122,7 +125,7 @@ interface ChangeState {
   status: "active" | "completed" | "cancelled";
   stage: "requirement" | "technical" | "plan" | "execution" | "close";
   branch: string; // 实际 Change 分支，默认 change/<id>
-  previews?: PreviewEntry[]; // 可省略；id 在当前 Change 内唯一；不使用独立原型清单
+  previews?: PreviewEntry[]; // 可省略；记录本次固定交付；项目当前清单位于原型包 prototype.json
   dependsOn?: string[]; // 前置 Change id，去重；全部满足后执行，xlarge 父 Change 不填
   parent?: string; // 所属 xlarge 父 Change 的 id
   children?: string[]; // 子 Change id，按 Plan 展示顺序排列且不重复；不表示串行依赖
@@ -238,7 +241,7 @@ Requirement 按“背景与目标、范围、行为变化、验收标准”组�
 
 ## 技术方案
 
-技术方案需要页面或组件原型时，先读 `workflow.json.prototype` 与现有用户选择：缺失时可提议并征求同意；disabled 不重复提议或启用追踪；pending 先完成接入；enabled 复用项目唯一原型包。已有明确同意直接沿用。同意后按 [Prototype 子 skill](./prototype/SKILL.md) 补齐子目录、初始化并交付原型，拒绝则持久记录 disabled。无原型也正常推进技术方案；不要自行写另一套模板或原型清单。
+技术方案需要页面或组件原型时，先读 `workflow.json.prototype` 与现有用户选择：缺失时可提议并征求同意；disabled 不重复提议或启用追踪；pending 先完成接入；enabled 复用项目唯一原型包。已有明确同意直接沿用。同意后按 [Prototype 子 skill](./prototype/SKILL.md) 补齐子目录、初始化并交付原型，拒绝则持久记录 disabled。已启用且明显改变产品 UI 的 Change 建议优先制作或更新原型；未采用建议也正常推进，不增加确认或门禁。宿主自行保证构建和托管，当前清单与固定引用遵循原型子 skill。
 
 medium 及以上基于已确认需求、项目规则和 Research 编写 Technical；small 的方案留在 Requirement。技术澄清与规划阶段只修改文档，不提前修改正式交付代码。
 
@@ -387,6 +390,8 @@ Specs 以任意深度的稳定业务能力树组织，完整相对路径是能�
 尚未提交归档而需再改实现时，先移回 changes、恢复 active 并返工；已提交归档只读。
 
 当前 Change 关闭不等于整条分支可合入；分支内全部 Change 的归档条件见[合码](#同仓库合码)。
+
+归档提交推送成功、必要的原型保留标签经远端核实后，先按[同仓库合码](#同仓库合码)完成预检，再主动询问用户：直接合入 `main`（或项目实际目标守护分支）、发起 PR，还是暂不处理。提供归档提交、目标分支及预检结果；若有未归档 Change 等阻塞，说明解除条件。已有明确选择时沿用，不重复询问；归档本身不授权合入或创建 PR，选择 PR 也不授权合并 PR。
 
 ## 取消 Change
 

@@ -20,7 +20,7 @@ npx skills add iTgo-lyq/spec-trail --skill spec-trail --agent codex --copy -y
 npx skills add iTgo-lyq/spec-trail --skill spec-trail --agent claude-code --copy -y
 ```
 
-安装后确认项目内 `.agents/skills/spec-trail/` 包含完整目录，其他客户端的入口由安装器管理。工作流由 Agent 执行，脚本校验流程状态和静态原型契约。
+安装后确认项目内 `.agents/skills/spec-trail/` 包含完整目录，其他客户端的入口由安装器管理。工作流由 Agent 执行，脚本校验流程状态、原型发布引用和 Git 兜底产物。
 
 更新项目内安装：
 
@@ -60,8 +60,8 @@ Agent 会按任务规模整理文档、确认必要的决策并推进 Change。�
 | 计划与执行 | 任务、依赖、分支和实际验证证据 |
 | 状态操作 | `change.json` 的语义命令及共享字段校验 |
 | 接入检查 | 只读环境检查，以及业务项目现有 hook 的接入指导 |
-| 关闭与归档 | 验证、验收、Specs 同步和完整 Change 历史 |
-| 可选原型 | 自包含 HTML 导出、Change 关联及归档 Git 引用 |
+| 关闭与归档 | 验证、验收、Specs 同步和完整 Change 历史；归档后询问直接合入或发起 PR，沿用已有明确选择 |
+| 可选原型 | 宿主构建与托管、main 当前清单、Change 固定版本引用，以及 Git 单 HTML 兜底 |
 
 业务项目中的文档结构：
 
@@ -90,6 +90,7 @@ skills/spec-trail/
 └── prototype/
     ├── SKILL.md
     ├── scripts/
+    ├── examples/
     └── assets/
 ```
 
