@@ -25,8 +25,6 @@ for (let i = 0; i < args.length; i++) {
     ![
       "--repo",
       "--package",
-      "--summary",
-      "--source",
       "--design",
       "--accept",
       "--decline",
@@ -53,9 +51,7 @@ try {
       Boolean,
     ).length !== 1
   )
-    throw Error(
-      "Choose --accept, --decline or --enable; decisions require --summary and actual user consent.",
-    );
+    throw Error("Choose --accept, --decline or --enable.");
   const cwd = resolve(options["--repo"] || ".");
   const root = execFileSync(
     "git",
@@ -69,16 +65,7 @@ try {
     await writeFile(configPath, JSON.stringify(config, null, 2) + "\n");
   };
   if (options["--decline"]) {
-    if (!options["--summary"]?.trim())
-      throw Error("Record the actual user decision with --summary.");
-    await persist({
-      status: "disabled",
-      decision: {
-        at: new Date().toISOString(),
-        summary: options["--summary"],
-        ...(options["--source"] ? { source: options["--source"] } : {}),
-      },
-    });
+    await persist({ status: "disabled" });
     console.log("Prototype tracking disabled; existing files preserved.");
   } else {
     const location =
@@ -112,15 +99,8 @@ try {
       design = relative(root, actual);
     }
     if (options["--accept"]) {
-      if (!options["--summary"]?.trim())
-        throw Error("Record the actual user decision with --summary.");
-      const decision = {
-        at: new Date().toISOString(),
-        summary: options["--summary"],
-        ...(options["--source"] ? { source: options["--source"] } : {}),
-      };
       // A fully configured package may be checked again without overwriting its contents.
-      await persist({ status: "pending", packagePath: location, decision });
+      await persist({ status: "pending", packagePath: location });
       const existing = await exists(pkg);
       const contents = existing ? await readdir(pkg) : [];
       if (!contents.length) {
@@ -180,11 +160,13 @@ try {
       config.prototype?.status !== "pending" &&
       config.prototype?.status !== "enabled"
     )
-      throw Error("Accept the project decision before --enable.");
+      throw Error(
+        "Initialize the prototype package with --accept before --enable.",
+      );
     if (validatePrototype(config.prototype).length)
-      throw Error("Invalid prototype decision");
+      throw Error("Invalid prototype configuration");
     if (options["--enable"] && config.prototype.status === "enabled")
-      await persist({ ...config.prototype, status: "pending" });
+      await persist({ status: "pending", packagePath: location });
     const packageJson = await json(join(pkg, "package.json"));
     if (!packageJson.name || packageJson.private !== true)
       throw Error("Prototype package requires a name and private:true");
@@ -277,7 +259,7 @@ try {
       if (!target.includes(location)) target.push(location);
       await writeFile(rootPackage, JSON.stringify(value, null, 2) + "\n");
     }
-    await persist({ ...config.prototype, status: "enabled" });
+    await persist({ status: "enabled", packagePath: location });
     console.log(
       `Prototype enabled: ${location}; ${count} static entry(s). Commit configuration, sources and outputs; publish the configuration baseline before viewing in OpenFolio.`,
     );

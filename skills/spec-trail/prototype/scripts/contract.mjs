@@ -33,15 +33,7 @@ const fields = (v, allowed, required, path, errors) => {
 };
 export function validatePrototype(value, path = "/prototype") {
   const errors = [];
-  if (
-    !fields(
-      value,
-      ["status", "packagePath", "decision"],
-      ["status", "decision"],
-      path,
-      errors,
-    )
-  )
+  if (!fields(value, ["status", "packagePath"], ["status"], path, errors))
     return errors;
   if (!["disabled", "pending", "enabled"].includes(value.status))
     errors.push(`${path}/status: invalid state`);
@@ -52,38 +44,6 @@ export function validatePrototype(value, path = "/prototype") {
     errors.push(
       `${path}/packagePath: requires a safe repository package directory`,
     );
-  const d = value.decision;
-  if (
-    fields(
-      d,
-      ["at", "summary", "source"],
-      ["at", "summary"],
-      `${path}/decision`,
-      errors,
-    )
-  ) {
-    const match =
-      typeof d.at === "string" &&
-      /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2})$/.exec(
-        d.at,
-      );
-    if (
-      !match ||
-      !Number.isFinite(Date.parse(d.at)) ||
-      Number(match[4]) > 23 ||
-      Number(match[5]) > 59 ||
-      Number(match[6]) > 59 ||
-      Number(match[3]) >
-        new Date(Date.UTC(Number(match[1]), Number(match[2]), 0)).getUTCDate()
-    )
-      errors.push(
-        `${path}/decision/at: requires a valid timestamp with timezone`,
-      );
-    if (!nonempty(d.summary))
-      errors.push(`${path}/decision/summary: must contain text`);
-    if (Object.hasOwn(d, "source") && !nonempty(d.source))
-      errors.push(`${path}/decision/source: must contain text`);
-  }
   return errors;
 }
 export const commitHash = (v) =>

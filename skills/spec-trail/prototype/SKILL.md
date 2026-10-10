@@ -12,9 +12,11 @@ description: SpecTrail 的可选原型协作：宿主自行构建和托管，维
 读取 AGENTS、设计规范、现有组件及 `workflow.json.prototype`，基线为已推送 main。未选择时按需询问；disabled 不重复建议；pending 修复接入；enabled 复用已有包。已启用且 Change 明显改变 UI 时，建议优先画或更新原型，未采用建议或没有 previews 都不阻断流程。
 
 ```bash
-node .agents/skills/spec-trail/prototype/scripts/setup.mjs --accept --summary '实际用户同意' --package packages/prototype
-node .agents/skills/spec-trail/prototype/scripts/setup.mjs --decline --summary '实际用户拒绝'
+node .agents/skills/spec-trail/prototype/scripts/setup.mjs --accept --package packages/prototype
+node .agents/skills/spec-trail/prototype/scripts/setup.mjs --decline
 ```
+
+接入决定沿用会话授权，历史由 Git 保存；workflow.json.prototype 只维护当前 status 和适用的 packagePath。
 
 setup 不安装框架，不覆盖已有文件；采用现有工程时提供 package.json、AGENTS、DESIGN 和合法 prototype.json，再运行 --enable。保留原包管理器，原型包 private:true。源码可用 HTML、React 及项目 UI 包，宿主保证正常 build 与浏览器交互，局部状态和 mock 不依赖真实业务服务或持久存储。
 

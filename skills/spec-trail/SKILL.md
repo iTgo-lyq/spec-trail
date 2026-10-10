@@ -82,7 +82,6 @@ interface WorkflowConfig {
 interface PrototypeConfig {
   status: "disabled" | "pending" | "enabled";
   packagePath?: string; // pending/enabled 必填，disabled 省略；每项目一个包
-  decision: Confirmation;
 }
 interface PreviewEntry {
   id: string;
