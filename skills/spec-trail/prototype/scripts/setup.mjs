@@ -11,6 +11,11 @@ import {
 } from "node:fs/promises";
 import { join, dirname, resolve, relative, matchesGlob } from "node:path";
 import { fileURLToPath } from "node:url";
+import { readFileSync, writeFileSync, renameSync, unlinkSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { validateWorkflow } from "../../scripts/state-schema.mjs";
+import { withLock, checkedPath } from "./publishing.mjs";
+import { discoverUpload } from "./openfolio-client.mjs";
 import {
   packagePath,
   validatePrototype,
@@ -29,10 +34,15 @@ for (let i = 0; i < args.length; i++) {
       "--accept",
       "--decline",
       "--enable",
+      "--configure",
+      "--hosting",
+      "--openfolio-url",
+      "--upload-url",
+      "--fetch-upload-url",
     ].includes(key)
   )
     throw Error(`Unknown option ${key}`);
-  options[key] = ["--accept", "--decline", "--enable"].includes(key)
+  options[key] = ["--accept", "--decline", "--enable", "--configure", "--fetch-upload-url"].includes(key)
     ? true
     : args[++i];
 }
@@ -47,24 +57,52 @@ const exists = async (p) => {
 };
 try {
   if (
-    [options["--accept"], options["--decline"], options["--enable"]].filter(
+    [options["--accept"], options["--decline"], options["--enable"], options["--configure"]].filter(
       Boolean,
     ).length !== 1
   )
-    throw Error("Choose --accept, --decline or --enable.");
+    throw Error("Choose --accept, --decline, --enable or --configure.");
   const cwd = resolve(options["--repo"] || ".");
   const root = execFileSync(
     "git",
     ["-C", cwd, "rev-parse", "--show-toplevel"],
     { encoding: "utf8" },
   ).trim();
-  const configPath = join(root, "docs/project/workflow.json");
-  const config = await json(configPath);
+  const configPath = checkedPath(root, "docs/project/workflow.json");
+  let original = readFileSync(configPath, "utf8");
+  const config = JSON.parse(original);
+  if (options["--openfolio-url"] !== undefined)
+    config.openfolioUrl = options["--openfolio-url"] === "none" ? null : options["--openfolio-url"];
+  if (options["--fetch-upload-url"]) {
+    if (options["--hosting"] !== "openfolio" || options["--upload-url"])
+      throw Error("Use --fetch-upload-url with --hosting openfolio instead of --upload-url.");
+    options["--upload-url"] = await discoverUpload(config.openfolioUrl);
+  }
+  const hosting = options["--hosting"]
+    ? { provider: options["--hosting"], ...(options["--upload-url"] ? { uploadUrl: options["--upload-url"] } : {}) }
+    : config.prototype?.hosting;
+  if (options["--upload-url"] && !options["--hosting"])
+    throw Error("Provide --hosting with --upload-url.");
   const persist = async (value) => {
-    config.prototype = value;
-    await writeFile(configPath, JSON.stringify(config, null, 2) + "\n");
+    const next = { ...config, prototype: { ...value, ...(hosting ? { hosting } : {}) } };
+    const issues = validateWorkflow(next);
+    if (issues.length) throw Error(issues.join("; "));
+    withLock(root, () => {
+      if (readFileSync(configPath, "utf8") !== original) throw Error("Workflow changed; reload before configuring.");
+      const tmp = `${configPath}.${randomUUID()}.tmp`;
+      const body = JSON.stringify(next, null, 2) + "\n";
+      try {
+        writeFileSync(tmp, body, { flag: "wx", mode: 0o600 });
+        renameSync(tmp, configPath);
+        original = body;
+        Object.assign(config, next);
+      } finally { try { unlinkSync(tmp); } catch (e) { if (e.code !== "ENOENT") throw e; } }
+    });
   };
-  if (options["--decline"]) {
+  if (options["--configure"]) {
+    await persist(config.prototype ?? { status: "pending", packagePath: options["--package"] || "packages/prototype" });
+    console.log("Prototype hosting selection saved. Commit workflow.json to share it.");
+  } else if (options["--decline"]) {
     await persist({ status: "disabled" });
     console.log("Prototype tracking disabled; existing files preserved.");
   } else {
@@ -121,7 +159,7 @@ try {
               name: "prototype",
               private: true,
               type: "module",
-              scripts: { build: "node build.mjs" },
+              scripts: { build: `node build.mjs${hosting && hosting.provider !== "git" ? " --hosted" : ""}` },
             },
             null,
             2,
@@ -133,10 +171,12 @@ try {
           "node_modules/\ndist/\n.cache/\n*.log\n*.map\n",
           { flag: "wx" },
         );
-        execFileSync(process.execPath, [join(pkg, "build.mjs")], {
+        execFileSync(process.execPath, [join(pkg, "build.mjs"), ...(hosting && hosting.provider !== "git" ? ["--hosted"] : [])], {
           cwd: pkg,
           stdio: "inherit",
         });
+        if (hosting && hosting.provider !== "git")
+          await writeFile(join(pkg, "prototype.json"), JSON.stringify({ schemaVersion: 1, entries: [{ id: "welcome", title: "Welcome", sourcePath: `${location}/src/pages/welcome.html`, kind: "page", devices: ["pc-web"] }] }, null, 2) + "\n", { flag: "wx" });
       } else if (!(await exists(join(pkg, "package.json")))?.isFile())
         throw Error(
           "Existing directory preserved; provide package.json and self-contained preview output before --enable.",
@@ -150,7 +190,7 @@ try {
           "DESIGN.md",
           design
             ? `# Design source\n\nFollow [the project design standard](${relative(pkg, join(root, design)).split("\\").join("/")}). Record only prototype-specific exceptions here; keep the source authoritative.\n`
-            : "# Design source\n\nReuse the project design tokens, typography, component library and accessibility conventions. Record the authoritative source here before adding a new visual direction. If no standard exists, establish one project-wide standard for this package.\n",
+            : await readFile(new URL("../assets/DESIGN.template.md", import.meta.url), "utf8"),
         ],
       ])
         if (!(await exists(join(pkg, file))))

@@ -167,6 +167,7 @@ const workflow = object(
   {
     schemaVersion: oneOf(1),
     prototype: prototypeRule,
+    openfolioUrl: () => {}, // Validated together with the hosting choice below.
     protectedBranches: list(
       stringRule(
         /^[^\s*?\[]+$/,
@@ -273,5 +274,6 @@ export const validateChange = (value) => {
 export const validateWorkflow = (value) => {
   const errors = [];
   workflow(value, "", errors);
+  errors.push(...prototypeContract.workflowHostingIssues(value));
   return errors;
 };

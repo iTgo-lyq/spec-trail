@@ -3,6 +3,7 @@ import { parseArgs } from "node:util";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { prepare, register, recover } from "./publishing.mjs";
+import { uploadToOpenFolio } from "./openfolio-client.mjs";
 try {
   const [command, ...args] = process.argv.slice(2);
   const { values: v } = parseArgs({
@@ -33,6 +34,9 @@ try {
     console.log(
       "Prepared publication request; invoke your host adapter to upload it.",
     );
+  } else if (command === "upload") {
+    await uploadToOpenFolio(root, { requestPath: v.request, resultPath: v.result, change: v.change });
+    console.log("Published and registered locally. Commit and push the references.");
   } else if (command === "register") {
     register(root, {
       change: v.change,
@@ -48,7 +52,7 @@ try {
     console.log("Restored references from the interrupted transaction.");
   } else
     throw Error(
-      "Use prepare, register or recover; publication itself is implemented by the host.",
+      "Use prepare, upload (OpenFolio), register or recover.",
     );
 } catch (e) {
   console.error(`Prototype publication: ${e.message}`);

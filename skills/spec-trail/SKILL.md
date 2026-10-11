@@ -76,12 +76,14 @@ type ISODateTime = string; // 新记录由脚本写 UTC 三位毫秒 ISO 时间�
 interface WorkflowConfig {
   schemaVersion: 1;
   protectedBranches: string[]; // 非空、去重；实际本地分支名，不带远程前缀或通配符
+  openfolioUrl?: string | null; // 缺失为未询问，null 为无自建服务
   prototype?: PrototypeConfig; // 可选原型接入；缺失表示未选择
 }
 
 interface PrototypeConfig {
   status: "disabled" | "pending" | "enabled";
   packagePath?: string; // pending/enabled 必填，disabled 省略；每项目一个包
+  hosting?: { provider: "openfolio" | "custom" | "git"; uploadUrl?: string };
 }
 interface PreviewEntry {
   id: string;
@@ -249,11 +251,11 @@ Requirement 按“背景与目标、范围、行为变化、验收标准”组�
 
 ## 技术方案
 
-技术方案需要页面或组件原型时，先读 `workflow.json.prototype` 与现有用户选择：缺失时可提议并征求同意；disabled 不重复提议或启用追踪；pending 先完成接入；enabled 复用项目唯一原型包。已有明确同意直接沿用。同意后按 [Prototype 子 skill](./prototype/SKILL.md) 补齐子目录、初始化并交付原型，拒绝则持久记录 disabled。已启用且明显改变产品 UI 的 Change 建议优先制作或更新原型；未采用建议也正常推进，不增加确认或门禁。宿主自行保证构建和托管，当前清单与固定引用遵循原型子 skill。
+涉及产品 UI 的 Change，先读 `workflow.json.prototype` 与现有用户选择：缺失时可提议并征求同意；disabled 不重复提议或启用追踪；pending 先完成接入；enabled 复用项目唯一原型包。已有明确同意直接沿用。同意接入后按 [Prototype 子 skill](./prototype/SKILL.md) 初始化，拒绝接入则记录 disabled。已启用时按子 skill 的 UI 规模规则决定询问或先绘制原型；构建、托管、当前清单与固定引用沿用其约定。
 
 medium 及以上基于已确认需求、项目规则和 Research 编写 Technical；small 的方案留在 Requirement。技术澄清与规划阶段只修改文档，不提前修改正式交付代码。
 
-技术未知项遵循[需求与调查](#需求与调查)的提问边界；不影响架构、安全、契约或可行性的任务内局部细节可留待执行。凭证只记录引用、交付与注入方式、环境与权限范围、负责人、就绪及轮换约定，不索要或写入秘密值。
+技术未知项遵循[需求与调查](#需求与调查)的提问边界；不影响架构、安全、契约或可行性的任务内局部细节可留待执行。凭证只记录引用、交付与注入方式、环境与权限范围、负责人、就绪及轮换约定，不索要或写入秘密值；原型专用上传地址按子 skill 约定保存到 workflow。
 
 ### 技术就绪条件
 

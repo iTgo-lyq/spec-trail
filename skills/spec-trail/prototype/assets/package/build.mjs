@@ -29,7 +29,7 @@ async function expand(path, parents = []) {
 let count = 0;
 for (const file of await readdir(join(root, 'src/pages'))) {
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*\.html$/.test(file)) continue;
-  const output = join(root, 'preview', file.slice(0, -5));
+  const output = join(root, process.argv.includes('--hosted') ? 'dist' : 'preview', file.slice(0, -5));
   const html = await expand(join(root, 'src/pages', file));
   await mkdir(output, { recursive: true });
   const actual = await realpath(output);

@@ -33,7 +33,7 @@ const fields = (v, allowed, required, path, errors) => {
 };
 export function validatePrototype(value, path = "/prototype") {
   const errors = [];
-  if (!fields(value, ["status", "packagePath"], ["status"], path, errors))
+  if (!fields(value, ["status", "packagePath", "hosting"], ["status"], path, errors))
     return errors;
   if (!["disabled", "pending", "enabled"].includes(value.status))
     errors.push(`${path}/status: invalid state`);
@@ -44,6 +44,28 @@ export function validatePrototype(value, path = "/prototype") {
     errors.push(
       `${path}/packagePath: requires a safe repository package directory`,
     );
+  if (Object.hasOwn(value, "hosting")) {
+    const h = value.hosting, at = `${path}/hosting`;
+    if (fields(h, ["provider", "uploadUrl"], ["provider"], at, errors)) {
+      if (!["openfolio", "custom", "git"].includes(h.provider))
+        errors.push(`${at}/provider: expected openfolio, custom or git`);
+      if (h.provider === "git" && Object.hasOwn(h, "uploadUrl"))
+        errors.push(`${at}/uploadUrl: omitted for git`);
+      if ((h.provider === "openfolio" || Object.hasOwn(h, "uploadUrl")) && !serviceUrl(h.uploadUrl))
+        errors.push(`${at}/uploadUrl: requires an HTTP/HTTPS URL without credentials, query or hash`);
+    }
+  }
+  return errors;
+}
+export function serviceUrl(value) {
+  return hostedUrl(value) && !new URL(value).hash;
+}
+export function workflowHostingIssues(value) {
+  const errors = [];
+  if (value?.openfolioUrl !== undefined && value.openfolioUrl !== null && !serviceUrl(value.openfolioUrl))
+    errors.push("/openfolioUrl: expected HTTP/HTTPS service URL or null");
+  if (value?.prototype?.hosting?.provider === "openfolio" && !serviceUrl(value.openfolioUrl))
+    errors.push("/openfolioUrl: required for OpenFolio hosting");
   return errors;
 }
 export const commitHash = (v) =>
@@ -58,7 +80,7 @@ export function hostedUrl(value) {
   try {
     const u = new URL(value);
     return (
-      u.protocol === "https:" &&
+      ["http:", "https:"].includes(u.protocol) &&
       !u.username &&
       !u.password &&
       !u.search &&
@@ -98,7 +120,7 @@ export function validateArtifact(value, path = "/artifact") {
     )
       errors.push(`${path}/version: invalid version`);
     if (!hostedUrl(value.url))
-      errors.push(`${path}/url: requires credential-free HTTPS without query`);
+      errors.push(`${path}/url: requires credential-free HTTP/HTTPS without query`);
     if (!/^sha256:[a-f0-9]{64}$/.test(value.digest ?? ""))
       errors.push(`${path}/digest: requires SHA-256`);
     if (Object.hasOwn(value, "thumbnails")) {
@@ -120,7 +142,7 @@ export function validateArtifact(value, path = "/artifact") {
             !/\.(png|webp)$/.test(new URL(t.url).pathname) ||
             new URL(t.url).hash
           )
-            errors.push(`${at}/url: requires a fixed PNG/WebP HTTPS URL`);
+            errors.push(`${at}/url: requires a fixed PNG/WebP HTTP/HTTPS URL`);
         }
       }
     }
