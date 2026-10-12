@@ -21,7 +21,7 @@ node website/serve.mjs
 
 标志是代码原生 SVG 的 Git 路径与节点；首页的示例工程记录可切换三个模块，用同一项“订单导出”说明各自职责。OpenFolio 图片为本项目已验证的真实首次连接界面，不含用户凭据；在线原型链接使用已发布的示例数据版本。
 
-Skill 安装与工程推进；工作台连接个人 GitHub token 后只读已推送记录；原型管理为可选子模块，管理当前清单和 Change 固定版本。网站不把 Cloudflare 静态站表示为正在运行的 OpenFolio 服务。
+Skill 安装与工程推进；工作台连接个人 GitHub token 后只读已推送记录；原型管理为可选子模块，管理当前清单和 Change 固定版本。网站不把 Cloudflare 静态站表示为正在运行的 OpenFolio 服务。OpenFolio 源码仓库目前为私有，公开页面引导访问已有实例，并为有源码访问权限的人提供部署步骤，不链接私有 GitHub 页面。
 
 ## Cloudflare Pages
 
