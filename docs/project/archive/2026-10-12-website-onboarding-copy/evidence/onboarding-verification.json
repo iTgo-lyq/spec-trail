@@ -1,0 +1,9 @@
+{
+  "checks": [
+    "Mobile homepage → installation: corrected Claude Code command, explanatory note and terminal feedback",
+    "setup-prompt: usable copied prompt and Agent-dialogue feedback",
+    "task-prompt: usable copied prompt and Agent-dialogue feedback",
+    "prototype-prompt: usable copied prompt and Agent-dialogue feedback",
+    "Deployment details: keyboard open, copy command, denied-copy fallback and mobile instructions"
+  ]
+}

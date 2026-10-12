@@ -1,0 +1,115 @@
+{
+  "pages": [
+    {
+      "name": "index.html",
+      "width": 320,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "index.html",
+      "width": 390,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "index.html",
+      "width": 768,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "index.html",
+      "width": 1024,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "index.html",
+      "width": 1440,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "skill.html",
+      "width": 320,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "skill.html",
+      "width": 390,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "skill.html",
+      "width": 768,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "skill.html",
+      "width": 1024,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "skill.html",
+      "width": 1440,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "workbench.html",
+      "width": 320,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "workbench.html",
+      "width": 390,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "workbench.html",
+      "width": 768,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "workbench.html",
+      "width": 1024,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "workbench.html",
+      "width": 1440,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "prototypes.html",
+      "width": 320,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "prototypes.html",
+      "width": 390,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "prototypes.html",
+      "width": 768,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "prototypes.html",
+      "width": 1024,
+      "horizontalOverflow": false
+    },
+    {
+      "name": "prototypes.html",
+      "width": 1440,
+      "horizontalOverflow": false
+    }
+  ],
+  "interactions": [
+    "homepage: three module examples",
+    "index.html: client switch, copy success and denied-copy fallback",
+    "skill.html: client switch, copy success and denied-copy fallback",
+    "mobile: open menu, Escape restores focus, module navigation",
+    "keyboard: FAQ toggle",
+    "reduced motion",
+    "four pages and assets served under a subpath",
+    "no JavaScript: navigation, all module examples and both installation commands"
+  ],
+  "failures": []
+}

@@ -1,0 +1,24 @@
+[
+  {
+    "agent": "codex",
+    "exitCode": 0,
+    "canonical": true,
+    "client": false,
+    "skillFiles": [
+      ".agents/skills/spec-trail/SKILL.md",
+      ".agents/skills/spec-trail/prototype/SKILL.md",
+      ".agents/skills/spec-trail/setup/SKILL.md"
+    ]
+  },
+  {
+    "agent": "claude-code",
+    "exitCode": 0,
+    "canonical": false,
+    "client": true,
+    "skillFiles": [
+      ".claude/skills/spec-trail/SKILL.md",
+      ".claude/skills/spec-trail/prototype/SKILL.md",
+      ".claude/skills/spec-trail/setup/SKILL.md"
+    ]
+  }
+]

@@ -1,0 +1,19 @@
+[
+  {
+    "agents": [
+      "codex"
+    ],
+    "exitCode": 0,
+    "canonical": true,
+    "claudeClient": false
+  },
+  {
+    "agents": [
+      "universal",
+      "claude-code"
+    ],
+    "exitCode": 0,
+    "canonical": true,
+    "claudeClient": true
+  }
+]
