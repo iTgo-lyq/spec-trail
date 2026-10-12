@@ -4,13 +4,13 @@
   "title": "让新用户理解 SpecTrail 并完成首次使用",
   "size": "small",
   "status": "active",
-  "stage": "requirement",
+  "stage": "execution",
   "branch": "codex/website-onboarding-copy",
   "confirmations": {},
   "tasks": {
     "T1": {
       "title": "由 iclaude 重写全部站点文案并审阅上手路径",
-      "status": "todo"
+      "status": "doing"
     }
   },
   "closure": {}
