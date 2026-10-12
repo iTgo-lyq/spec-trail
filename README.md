@@ -4,7 +4,7 @@ A Git-native, spec-driven workflow for coding agents.
 
 SpecTrail 是一套 Agent Skill，用 Git 和 `docs/project/` 管理需求、技术方案、计划、执行、验收及归档。每个 Change 的流程状态由 `change.json` 维护，正文和验证证据保存在 Markdown 中。
 
-产品介绍站区分 Skill、OpenFolio 工作台与原型管理。网站源码及 Cloudflare Pages 发布说明见 [website/README.md](website/README.md)。
+[产品介绍站](https://spec-trail.pages.dev/)区分 Skill、OpenFolio 工作台与原型管理。网站源码及 Cloudflare Pages 发布说明见 [website/README.md](website/README.md)。
 
 ## 安装
 

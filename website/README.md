@@ -2,6 +2,8 @@
 
 独立的中文静态介绍站，分为首页、Skill、OpenFolio 工作台和原型管理四页。内容以分发包和 OpenFolio 当前 README 为依据；不包含工作台服务、用户数据或发布密钥。首页交互均使用标明的示例内容。
 
+正式入口：[spec-trail.pages.dev](https://spec-trail.pages.dev/)。Cloudflare 项目为 `spec-trail`。
+
 ## 构建与预览
 
 需要 Node.js 24，无 npm 依赖：
