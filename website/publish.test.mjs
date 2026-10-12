@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ensureProject, target, currentProduction } from './publish.mjs';
+import { ensureProject, target, currentProduction, verifyDeployment } from './publish.mjs';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { join, dirname } from 'node:path';
+import { tmpdir } from 'node:os';
+import { files } from './build.mjs';
+import { mime } from './serve.mjs';
+import { extname } from 'node:path';
 
 const credentials = { accountId: 'a'.repeat(32), apiToken: 'test-only', projectName: 'spec-trail' };
 const project = { name: 'spec-trail', production_branch: 'main', subdomain: 'spec-trail.pages.dev' };
@@ -41,4 +47,23 @@ test('outdated production runs cannot replace the current website', async () => 
   const env = { GITHUB_EVENT_NAME: 'push', GITHUB_REF_TYPE: 'branch', GITHUB_REF_NAME: 'main', GITHUB_REPOSITORY: 'iTgo-lyq/spec-trail', GITHUB_SHA: 'a'.repeat(40), GH_TOKEN: 'test-only' };
   await assert.rejects(currentProduction(env, async () => response(200, { object: { sha: 'b'.repeat(40) } })), /outdated/);
   await currentProduction(env, async () => response(200, { object: { sha: env.GITHUB_SHA } }));
+});
+test('new-domain network propagation is retried and HTML normalization stays on the deployment', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'spec-trail-publishing-'));
+  let calls = 0;
+  try {
+    for (const file of files) { await mkdir(dirname(join(directory, file)), { recursive: true }); await writeFile(join(directory, file), file); }
+    const result = await verifyDeployment({
+      url: 'https://abc.spec-trail.pages.dev', subdomain: 'spec-trail.pages.dev', mode: 'preview', environment: 'preview', directory, retryDelay: 0,
+      fetchImpl: async input => {
+        if (++calls === 1) throw Error('TLS propagation');
+        const path = new URL(input).pathname.slice(1) || 'index.html';
+        if (path === 'index.html' && new URL(input).pathname !== '/') return new Response(null, { status: 308, headers: { location: '/' } });
+        return new Response(path, { headers: { 'content-type': path.endsWith('.js') ? 'application/javascript' : mime[extname(path)] } });
+      },
+    });
+    assert.equal(result.files.length, files.length - 1);
+    assert.equal(calls, files.length + 1);
+    await assert.rejects(verifyDeployment({ url: 'https://other.pages.dev', subdomain: 'spec-trail.pages.dev', mode: 'preview', environment: 'preview', directory }), /unique deployment/);
+  } finally { await rm(directory, { recursive: true, force: true }); }
 });

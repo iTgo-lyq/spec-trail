@@ -50,25 +50,32 @@ export async function currentProduction(env, fetchImpl = fetch) {
   assert.equal(response.status, 200, 'Cannot verify current main');
   assert.equal((await response.json()).object.sha, env.GITHUB_SHA, 'This run is outdated; publish the latest main commit');
 }
-export async function verifyDeployment({ url, subdomain, mode, environment, directory = join(root, 'dist/website') }) {
+export async function verifyDeployment({ url, subdomain, mode, environment, directory = join(root, 'dist/website'), fetchImpl = fetch, retryDelay = 5000, propagationMs = 180000 }) {
   assert.equal(environment, mode, 'Unexpected Pages environment');
   const base = new URL(url);
   assert.equal(base.protocol, 'https:');
   assert(!base.username && !base.password && !base.search && !base.hash);
   assert(base.hostname !== subdomain && base.hostname.endsWith(`.${subdomain}`), 'Expected the unique deployment URL returned by Cloudflare');
   const results = [];
+  const deadline = Date.now() + propagationMs;
   for (const file of files.filter(name => name !== '_headers')) {
     const expected = await readFile(join(directory, file));
     const expectedHash = createHash('sha256').update(expected).digest('hex');
     let passed = false;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const response = await request(new URL(file, `${base.origin}/`), { redirect: 'manual' });
+    do {
+      let response;
+      try { response = await request(new URL(file, `${base.origin}/`), { redirect: 'manual' }, fetchImpl); }
+      catch (error) {
+        if (Date.now() >= deadline) throw error;
+        await new Promise(resolveWait => setTimeout(resolveWait, retryDelay));
+        continue;
+      }
       const canonical = response.headers.get('location');
       let final = response;
       if (response.status >= 300 && response.status < 400 && canonical) {
         const normalized = new URL(canonical, `${base.origin}/${file}`);
         assert.equal(normalized.origin, base.origin, 'Unexpected deployment redirect');
-        final = await request(normalized, { redirect: 'error' });
+        final = await request(normalized, { redirect: 'error' }, fetchImpl);
       }
       const received = Buffer.from(await final.arrayBuffer());
       const hash = createHash('sha256').update(received).digest('hex');
@@ -77,8 +84,8 @@ export async function verifyDeployment({ url, subdomain, mode, environment, dire
         assert(expectedTypes.includes(final.headers.get('content-type')?.split(';')[0]), `${file}: incorrect MIME`);
         results.push({ file, bytes: expected.length, sha256: hash }); passed = true; break;
       }
-      if (attempt < 4) await new Promise(resolveWait => setTimeout(resolveWait, 5000));
-    }
+      if (Date.now() < deadline) await new Promise(resolveWait => setTimeout(resolveWait, retryDelay));
+    } while (Date.now() < deadline);
     assert(passed, `Online content mismatch: ${file}; inspect ${base.origin} before publishing again`);
   }
   return { url: base.origin, productionUrl: `https://${subdomain}`, mode, files: results };
