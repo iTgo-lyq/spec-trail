@@ -13,4 +13,8 @@
 
 ## 发布路径
 
-沿用已有 Cloudflare Pages 项目和发布工作流，先推送内容提交以验证公开分支预览，再在关闭和集成后核对生产内容。凭据使用既有 GitHub Repository secrets，未读取、保存或修改其值。
+内容提交 `35c325ebdc330c999599ad87ebc4d8449c05f97c` 经 [Actions 38251464907](https://github.com/iTgo-lyq/spec-trail/actions/runs/38251464907) 发布到 [唯一预览地址](https://941466e8.spec-trail.pages.dev/)。流水线的发布行为检查、构建、静态检查、上传与逐文件摘要/MIME 验证全部通过；项目 Agent 在真实浏览器中核对四页 200、手机无溢出、无页面错误、Claude Code 安装命令及 site.json 提交一致。
+
+另用安装器从公开 `iTgo-lyq/spec-trail` 拉取分发包，在两个全新临时 Git 仓库执行 Codex 和纠正后的 Claude Code 安装参数，均成功并生成要求的入口，结果见 evidence/public-installation-check.json。
+
+沿用已有 Cloudflare Pages 项目和发布工作流，在关闭和集成后继续核对生产内容。凭据使用既有 GitHub Repository secrets，未读取、保存或修改其值；最终集成与生产验证留在 Git/Actions，不回写只读归档。

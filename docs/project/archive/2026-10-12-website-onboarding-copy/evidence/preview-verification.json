@@ -1,0 +1,27 @@
+{
+  "url": "https://941466e8.spec-trail.pages.dev",
+  "commit": "35c325ebdc330c999599ad87ebc4d8449c05f97c",
+  "checks": [
+    {
+      "page": "index.html",
+      "status": 200,
+      "horizontalOverflow": false
+    },
+    {
+      "page": "skill.html",
+      "status": 200,
+      "horizontalOverflow": false
+    },
+    {
+      "page": "workbench.html",
+      "status": 200,
+      "horizontalOverflow": false
+    },
+    {
+      "page": "prototypes.html",
+      "status": 200,
+      "horizontalOverflow": false
+    }
+  ],
+  "errors": []
+}

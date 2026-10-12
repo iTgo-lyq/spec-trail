@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "id": "website-onboarding-copy",
+  "title": "让新用户理解 SpecTrail 并完成首次使用",
+  "size": "small",
+  "status": "completed",
+  "stage": "close",
+  "branch": "codex/website-onboarding-copy",
+  "confirmations": {},
+  "tasks": {
+    "T1": {
+      "title": "由 iclaude 重写全部站点文案并审阅上手路径",
+      "status": "done",
+      "verification": "iclaude 全文改写与复审修订已落实；静态检查、20 个响应式组合、提示词/复制/折叠部署交互、双入口 Claude Code 安装及 setup 检查通过，证据见 review.md 和 execution.md",
+      "commitTitle": "Make SpecTrail easier to understand and start using"
+    }
+  },
+  "closure": {
+    "verification": {
+      "result": "passed",
+      "at": "2026-10-12T12:52:50.512Z",
+      "summary": "iclaude 独立全文改写、第二轮复审的 17 处修订及安装说明已落实；本地静态/浏览器/公开源安装校验通过，Actions 38251464907 和唯一公开预览四页、提交与手机显示核对通过"
+    },
+    "acceptance": {
+      "result": "accepted",
+      "at": "2026-10-12T12:52:50.578Z",
+      "summary": "Agent 自验收通过：对照 requirement 五项验收，四页及共用文案经 iclaude 审阅，模块与首次使用路径清楚，安装和权限前提有实际依据，响应式/复制/导航与公开预览证据通过，未把原型或安装解释为真实用户完整交付",
+      "source": "SpecTrail small 默认 Agent 自验收直接归档规则；用户明确要求全站文案由 iclaude 重组、review 合理性并让用户易理解好上手"
+    },
+    "specs": {
+      "result": "synced",
+      "at": "2026-10-12T12:52:50.644Z",
+      "summary": "首次建立 product-introduction 能力规格，记录实际模块介绍、首次使用、双客户端安装入口、复制与发布边界"
+    },
+    "archive": {
+      "result": "done",
+      "at": "2026-10-12T12:52:50.709Z",
+      "summary": "保存实际需求、iclaude 复审、问题处理、截图、安装与预览证据；此前建站未建 Change 的历史不补写",
+      "path": "docs/project/archive/2026-10-12-website-onboarding-copy"
+    }
+  }
+}
