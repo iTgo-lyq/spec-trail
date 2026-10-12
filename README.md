@@ -19,8 +19,10 @@ npx skills add iTgo-lyq/spec-trail --skill spec-trail --agent codex --copy -y
 也可以为其他支持 Agent Skills 的客户端安装，例如：
 
 ```bash
-npx skills add iTgo-lyq/spec-trail --skill spec-trail --agent claude-code --copy -y
+npx skills add iTgo-lyq/spec-trail --skill spec-trail --agent universal claude-code --copy -y
 ```
+
+它会同时生成共享 Skill 目录 `.agents/skills/spec-trail`（主 Skill 脚本从这里调用）和 Claude Code 入口 `.claude/skills/spec-trail`。
 
 安装后确认项目内 `.agents/skills/spec-trail/` 包含完整目录，其他客户端的入口由安装器管理。工作流由 Agent 执行，脚本校验流程状态、原型发布引用和 Git 兜底产物。
 

@@ -14,9 +14,9 @@ if (menu && nav) {
 const demoButtons = [...document.querySelectorAll('[data-demo]')];
 const demoPanels = [...document.querySelectorAll('[data-demo-panel]')];
 const demoCaptions = {
-  skill: '示例工程记录 · Agent 在仓库中维护需求、任务和验证证据。',
-  workbench: '示例阅读视图 · OpenFolio 展示已推送的 Specs 与 Changes。',
-  prototype: '示例设计版本 · 原型引用保留在当前清单和对应 Change 中。',
+  skill: '示例 · Skill：Agent 在你的仓库里写下需求、任务、进度和验证记录。',
+  workbench: '示例 · 工作台：OpenFolio 只读展示已推送的任务进度与验证记录。',
+  prototype: '示例 · 原型：用示例数据演示界面，版本固定在对应的改动中。',
 };
 if (demoButtons.length) {
   document.querySelector('.demo-tabs').hidden = false;
@@ -50,12 +50,12 @@ document.querySelectorAll('[data-copy]').forEach(button => {
     region?.querySelector('.copy-fallback')?.remove();
     try {
       await navigator.clipboard.writeText(target.textContent.trim());
-      if (status) status.textContent = '已复制，可以粘贴到终端或 Agent 对话中。';
+      if (status) status.textContent = button.closest('.prompt') ? "已复制提示词。请在这个项目的 Codex 或 Claude Code 对话中粘贴并发送。" : "已复制命令。请在终端中进入说明的目录，粘贴并执行。";
     } catch {
-      if (status) status.textContent = '浏览器未允许复制，请选中下方内容手动复制。';
+      if (status) status.textContent = "未能自动复制，请手动复制下方文本：手机上长按文本选择“复制”，电脑上按 Ctrl+C（Mac 为 ⌘C）。";
       const fallback = document.createElement('textarea');
       fallback.className = 'copy-fallback'; fallback.readOnly = true;
-      fallback.setAttribute('aria-label', '手动复制内容'); fallback.value = target.textContent.trim();
+      fallback.setAttribute('aria-label', '待复制的内容'); fallback.value = target.textContent.trim();
       region?.append(fallback); fallback.focus(); fallback.select();
     }
   });
