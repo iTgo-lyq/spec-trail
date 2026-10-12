@@ -1,0 +1,71 @@
+name: SpecTrail website
+
+on:
+  push:
+    branches: [main, 'codex/**']
+    paths: ['website/**', 'README.md', '.github/workflows/website-pages.yml']
+  pull_request:
+    paths: ['website/**', 'README.md', '.github/workflows/website-pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spec-trail-pages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  website:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+      - name: Check publication behavior
+        run: node --test website/publish.test.mjs
+      - name: Build static website
+        run: node website/build.mjs
+      - name: Check pages, links, commands and public files
+        run: node website/check.mjs
+      - name: Prepare dedicated Pages project
+        id: prepare
+        if: github.event_name != 'pull_request'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_PAGES_PROJECT: ${{ vars.CLOUDFLARE_PAGES_PROJECT }}
+          GH_TOKEN: ${{ github.token }}
+        run: node website/publish.mjs prepare
+      - name: Deploy static assets to Cloudflare Pages
+        id: pages
+        if: steps.prepare.outputs.deploy == 'true'
+        uses: cloudflare/wrangler-action@953926a2e2182532811c01a25e53647d93bf07c0 # v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '4.146.0'
+          packageManager: npm
+          workingDirectory: ${{ steps.prepare.outputs.tool_directory }}
+          command: >-
+            pages deploy ${{ steps.prepare.outputs.site_directory }}
+            --project-name=${{ steps.prepare.outputs.project }}
+            --branch=${{ steps.prepare.outputs.branch }}
+            --commit-hash=${{ github.sha }}
+            --commit-dirty=true
+      - name: Verify the unique deployment
+        if: steps.prepare.outputs.deploy == 'true'
+        env:
+          PAGES_DEPLOYMENT_URL: ${{ steps.pages.outputs.deployment-url }}
+          PAGES_ENVIRONMENT: ${{ steps.pages.outputs.pages-environment }}
+        run: node website/publish.mjs verify
+      - name: Report deployment evidence
+        if: always()
+        run: |
+          if [ -f .cache/website-pages/deployment.json ]; then
+            cat .cache/website-pages/deployment.json
+          fi
