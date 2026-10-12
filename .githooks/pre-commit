@@ -1,0 +1,2 @@
+#!/bin/sh
+exec node "$(git rev-parse --show-toplevel)/.agents/skills/spec-trail/setup/scripts/pre-commit.js" "$@"
