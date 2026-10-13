@@ -71,7 +71,7 @@ Markdown 不维护阶段、完成勾选、任务或审批状态，也不能用�
 ### 状态字段
 
 ```ts
-type ISODateTime = string; // 新记录由脚本写 UTC 三位毫秒 ISO 时间；读取兼容原有带时区格式
+type ISODateTime = string; // 脚本写 UTC 三位毫秒 ISO 时间；读取接受有效的 ISO 8601 时区格式
 
 interface WorkflowConfig {
   schemaVersion: 1;

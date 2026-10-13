@@ -32,7 +32,7 @@ node .agents/skills/spec-trail/prototype/scripts/setup.mjs --configure --openfol
 
 首次初始化可将这些参数与 --accept 一起使用。新 hosted 包默认输出 dist，Git 输出 preview/id/index.html；已有工程保留原构建命令，发布时显式指定产物目录。
 
-管理员可在本地设置 OPENFOLIO_ADMIN_PASSWORD，将 --upload-url 换为 --fetch-upload-url 自动获取并保存地址；不把管理密码写入仓库。OpenFolio 的静态文件公开读取，上传不要求项目登记或邀请码。
+管理员可在本地设置 OPENFOLIO_ADMIN_PASSWORD，将 --upload-url 换为 --fetch-upload-url 自动获取并保存地址；不把管理密码写入仓库。OpenFolio 的静态文件公开读取，上传使用专用上传地址授权。
 
 setup 不安装框架，不覆盖已有文件；采用现有工程时提供 package.json、AGENTS、DESIGN 和合法 prototype.json，再运行 --enable。保留原包管理器，原型包 private:true。源码可用 HTML、React 及项目 UI 包，宿主保证正常 build 与浏览器交互，局部状态和 mock 不依赖真实业务服务或持久存储。
 
@@ -84,7 +84,7 @@ OpenFolio 上传失败可原请求重试；上传成功但本地登记失败时�
 
 原型使用 HTTP/HTTPS，无来源白名单或不同源要求。iframe 保留 `sandbox="allow-scripts"`，不授予 allow-same-origin。ESM、动态模块和字体等静态资源需允许无 Cookie 的 CORS（如 Access-Control-Allow-Origin:*），资源用相对路径，路由用 hash/memory。宿主允许嵌入并配置 CSP；OpenFolio 不代理第三方登录、下载或转发凭据。
 
-宿主可使用 [就绪桥接](./scripts/bridge.mjs) 回复工作台的 ready/error 握手。未确认就绪时工作台显示未确认，iframe load 不等于应用成功。
+宿主可使用 [就绪桥接](./scripts/bridge.mjs) 回复工作台的 ready/error 握手。工作台分别处理页面加载和应用就绪，页面加载完成后不因缺少可选握手而持续提示未就绪。
 
 ```bash
 node .agents/skills/spec-trail/prototype/scripts/validate.mjs
@@ -105,26 +105,10 @@ node .agents/skills/spec-trail/prototype/scripts/publish.mjs register --git-entr
 
 ## 归档
 
-主 skill 完成验证、人工验收与 Specs 同步后提交归档。非空 previews 继续需要保留标签：
+主 skill 完成验证、验收与 Specs 同步后提交归档。非空 previews 继续需要保留标签：
 
 ```bash
 node .agents/skills/spec-trail/prototype/scripts/archive.mjs --change change-id --push
 ```
 
 分支与 `spec-trail/archive-v2/<id>` 标签均核实后才报告完成。相同提交可重试，不覆盖同名异提交标签。缺少标签或远端产物时明确说明，不回退其他版本。
-
-
-## 一次性旧存档迁移
-
-运行时只接受 artifact 引用，旧 previews.path 格式不再兼容。用户明确要求迁移旧存档后，在非守护分支运行：
-
-```bash
-node .agents/skills/spec-trail/prototype/scripts/migrate.mjs --change old-change
-# 原标签不存在时须提供原交付的完整 --revision。
-# 核对迁移字节与来源，提交推送后：
-node .agents/skills/spec-trail/prototype/scripts/archive.mjs --change old-change --push
-```
-
-迁移只从确定的原交付提交读取 HTML，复制到 Change 的 previews/id 并更新引用；保留其他历史事实，拒绝覆盖不同字节和之后已修改的关联。同参数可重试；中断后用 publish.mjs recover 恢复事务。源码提交采用所迁移的原交付提交，可由该提交核对当时源码及产物。
-
-新保留标签统一为 spec-trail/archive-v2/id，旧标签和 Git 历史不改写；迁移后分享新提交链接，旧格式固定链接不再预览。服务 pin 按新命名空间隔离，并保留旧缓存 pin；新标签一经观察同样禁止替换。
