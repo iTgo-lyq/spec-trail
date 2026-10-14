@@ -16,7 +16,9 @@ description: 管理单个 Git 仓库 docs/project 下的需求、技术方案、
 - **复用已有 Change**：目标被现有 `active` Change 覆盖时询问用户是否复用。
 - **需要新建**：按[创建与规模](#创建与规模)完成简短确认，再建立 Change。
 
-当前阶段仅从本地仓库已有分支和 worktree 中 `docs/project/` 下的 `changes/` 与 `archive/` 查找 Change，按 id 识别，以 `branch` 指定分支的本地记录为准；后续接入 open-folio 服务提供的 CLI 查询。
+当前阶段从本地仓库已有分支和 worktree 查找 Change，默认范围为 `docs/project/changes/`，按 id 识别，以 `branch` 指定分支的本地记录为准；后续接入 open-folio 服务提供的 CLI 查询。
+
+日常调查与搜索默认排除 `docs/project/archive/`，优先读取当前 Specs、未归档 Change 和实现；仅明确需要追溯历史时，按相关 Change 或主题限定归档搜索范围。ID 查重、依赖及子 Change 状态核对可按 ID 定点读取归档元数据，不扩展为历史正文搜索。
 
 ### 分支与协作
 
@@ -38,6 +40,8 @@ description: 管理单个 Git 仓库 docs/project 下的需求、技术方案、
 | `changes/<id>/` | 尚未归档的 Change，含正文、状态和证据；取消的 Change 也保留在这里 |
 | `archive/YYYY-MM-DD-<id>/` | 已完成关闭的完整 Change，作为只读历史保存 |
 
+已提交归档的 Change 默认不可修改，包括正文、状态与证据；后续需求或返修创建新 Change。历史勘误仅限用户明确要求，核实事实后在所属分支做最小人工修正，以独立提交说明原因，不改写已推送 Git 历史。
+
 一个 Change 对应一个内聚目标。正文按阶段创建，省略空章节，不生成占位文件、额外索引、TODO、重复状态表或版本计数器，不按固定篇幅或评分凑内容；需求、技术和计划均不写逐文件操作说明。
 
 | Change 内文件 | 内容 |
@@ -56,7 +60,7 @@ Markdown 不维护阶段、完成勾选、任务或审批状态，也不能用�
 
 常规 `change.json` 创建和修改统一使用主 skill 自带的 [语义命令](./references/state-commands.md)：`node .agents/skills/spec-trail/scripts/change.mjs <command> --change <id>`。调用前按需读取命令说明；不要手写 JSON、用通用 patch 或临时 Python/JS 拼接状态。正文 Markdown 继续直接编辑，下面的字段定义用于阅读与校验。
 
-脚本负责 UTC 毫秒时间、操作前置、失效状态清理和原子写入；Agent 负责实际确认、验证证据、正文一致性与提交推送。用户明确授权的历史勘误可在所属分支做最小人工修正并说明原因。共享校验在 `scripts/state-schema.mjs`，hook 与语义命令共用，保持零第三方依赖。
+脚本负责 UTC 毫秒时间、操作前置、失效状态清理和原子写入；Agent 负责实际确认、验证证据、正文一致性与提交推送。历史勘误按[文档与事实来源](#文档与事实来源)处理。共享校验在 `scripts/state-schema.mjs`，hook 与语义命令共用，保持零第三方依赖。
 
 ## 读取 Change 现状
 
@@ -186,7 +190,7 @@ interface ChangeState {
 
 用户认可后：
 
-1. 按字段约定生成 `id`，核对本地 Change、分支与归档，避免重名。id 表达用户结果，不用纯日期或模糊名称，创建后不变；`title` 可调整。
+1. 按字段约定生成 `id`，核对本地 Change、分支与该 ID 的归档元数据，避免重名。id 表达用户结果，不用纯日期或模糊名称，创建后不变；`title` 可调整。
 2. 从最新守护分支创建 `change/<id>`；在依赖分支规划时，`branch` 填实际分支。
 3. 在实际 Change 分支运行 `create` 建立目录与初始 JSON，传目标、规模与已有依赖/父子关系；脚本生成 `active` / `requirement` 和空流程记录。
 4. 将已有目标、范围、方向、未决问题及外部材料写入 `requirement.md`，继续需求整理。
@@ -349,7 +353,7 @@ Plan 引用 Requirement 与 Technical，说明交付目标、任务与整体验�
 | 关键技术方案变化 | 保留有效需求确认，移除失效的 technical、plan 确认 |
 | 已确认范围内的实现修正 | 保留有效确认，修改未完成任务或追加返修任务；执行中回到 execution，尚在规划时留在对应规划阶段 |
 
-返工时按[规模调整](#规模调整)复核实际影响。清除失效的等待和关闭结果，实现或行为变化后重新执行验证、验收及后续关闭步骤。用户新指令明确确认的部分可直接记录，文字澄清不自动使确认失效；已归档交付的返修创建新 Change。
+返工时按[规模调整](#规模调整)复核实际影响。清除失效的等待和关闭结果，实现或行为变化后重新执行验证、验收及后续关闭步骤。用户新指令明确确认的部分可直接记录，文字澄清不自动使确认失效；已归档交付按[归档只读约定](#文档与事实来源)处理。
 
 ## 关闭与 Specs
 
@@ -397,7 +401,7 @@ Specs 以任意深度的稳定业务能力树组织，完整相对路径是能�
 
 前三步成功且证据仍适用后，将完整目录移动到 `docs/project/archive/YYYY-MM-DD-<id>/`，目标冲突不能覆盖，并确认源目录已不存在、目标材料完整。记录 `archive.result: done` 与 `path`，设置 `status: completed`、`stage: close`，移除等待项，将 Specs、最终 JSON 和目录移动一起提交推送。
 
-尚未提交归档而需再改实现时，先移回 changes、恢复 active 并返工；已提交归档只读。
+尚未提交归档而需再改实现时，先移回 changes、恢复 active 并返工；已提交后按[归档只读约定](#文档与事实来源)处理。
 
 当前 Change 关闭不等于整条分支可合入；分支内全部 Change 的归档条件见[合码](#同仓库合码)。
 

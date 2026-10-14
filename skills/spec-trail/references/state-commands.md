@@ -1,6 +1,6 @@
 # Change 状态命令
 
-常规状态修改使用 `node .agents/skills/spec-trail/scripts/change.mjs <命令> --change <id>`，在 Change 主分支运行。Node.js 20+，仅使用内置模块，无需安装依赖。`--repo <仓库>` 可显式指定工作区；`--dry-run` 只输出拟写状态，不修改文档。`show` 可读取活动或归档记录。
+常规状态修改使用 `node .agents/skills/spec-trail/scripts/change.mjs <命令> --change <id>`，在 Change 主分支运行。Node.js 20+，仅使用内置模块，无需安装依赖。`--repo <仓库>` 可显式指定工作区；`--dry-run` 只输出拟写状态，不修改文档。`show` 按 ID 读取活动或归档 Change 的元数据，查找范围遵循[主 skill](../SKILL.md#入口与通用约束)。
 
 脚本写入现有 `change.json`，不会替用户确认、运行测试、验证 Markdown 正文含义或自动提交/推送。摘要和来源由 Agent 根据真实证据填写；调用成功仅代表本地状态更新。任务默认按编号数值递增串行；Plan 可用显式执行顺序表覆盖，存在但无效时拒绝推进。顺序解析和前置链校验由共享 `scripts/task-order.mjs` 执行，正文任务定义和实际交付仍由 Agent 核对。依赖读取本地及 `origin` 跟踪分支，调用前按主 skill fetch；缺少已推送关闭记录时拒绝执行；若因 squash 等原因无法从祖先关系证明交付已集成，先核对所需代码/验证并写入 Execution，再用 `--availability-note '具体集成依据'` 继续。execute 及 xlarge 的 verify/accept/archive 接受该参数，输出前置主分支与当前 HEAD 的提交身份和依据，不把人工核对冒充祖先证明。
 
@@ -45,4 +45,4 @@ node .agents/skills/spec-trail/scripts/change.mjs verify --change example --resu
 
 每次操作持有 Git common-dir 内的仓库锁，JSON 通过同目录临时文件与 rename 写入，并检查写入前原文未被其他编辑器修改。重复创建/覆盖确认/重复完成/覆盖归档均拒绝；失败先查明原因，不通过手改 JSON 绕过前置校验。进程异常退出可能留下锁；确认持锁进程已结束、核对工作区后才能清理。归档涉及目录与 JSON 两次 rename，普通失败会回退；断电/强制杀进程时先结合 Git diff 检查文件与目录再恢复，不宣称具备跨文件事务保证。
 
-正常操作不修改已归档或取消记录。用户明确要求历史勘误时，核实事实后在所属分支做最小修正，以独立提交说明原因，不改写已推送 Git 历史。脚本尚未覆盖的语义先补充命令与验证，不使用通用任意字段 patch。
+正常操作不修改已归档或取消记录；历史勘误按[主 skill](../SKILL.md#文档与事实来源)处理。脚本尚未覆盖的语义先补充命令与验证，不使用通用任意字段 patch。
