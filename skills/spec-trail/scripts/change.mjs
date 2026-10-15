@@ -21,6 +21,9 @@ const commands = {
   create: ["title", "size", "depends-on", "parent", "children"],
   show: [],
   retitle: ["title"],
+  "clarification-ask": ["question", "round", "text", "recommendation"],
+  "clarification-answer": ["question", "answer", "source"],
+  "clarification-withdraw": ["question", "reason"],
   confirm: [
     "phase",
     "summary",
@@ -383,6 +386,56 @@ function main() {
       case "retitle":
         state.title = need("title");
         break;
+      case "clarification-ask": {
+        const entries = state.clarifications || {};
+        const next =
+          Math.max(
+            0,
+            ...Object.keys(entries).map((key) => Number(key.slice(1))),
+          ) + 1;
+        const question = opts.question || `Q${next}`;
+        assert(
+          /^Q[1-9][0-9]*$/.test(question) &&
+            Number.isSafeInteger(Number(question.slice(1))) &&
+            Number(question.slice(1)) >= next,
+          "Question id must increase and cannot be reused",
+        );
+        const round = need("round");
+        assert(
+          /^[1-9][0-9]*$/.test(round),
+          "--round must be a positive integer",
+        );
+        state.clarifications = {
+          ...entries,
+          [question]: {
+            round: Number(round),
+            question: need("text"),
+            recommendation: need("recommendation"),
+          },
+        };
+        break;
+      }
+      case "clarification-answer":
+      case "clarification-withdraw": {
+        const question = need("question");
+        assert(
+          Object.hasOwn(state.clarifications || {}, question),
+          "Question does not exist",
+        );
+        const entry = state.clarifications[question];
+        assert(
+          !entry.withdrawn,
+          "Question has been withdrawn; retain it and ask a new question if needed",
+        );
+        if (command === "clarification-withdraw")
+          entry.withdrawn = need("reason");
+        else {
+          entry.answer = need("answer");
+          if (opts.source !== undefined) entry.source = need("source");
+          else delete entry.source;
+        }
+        break;
+      }
       case "confirm": {
         const phase = need("phase");
         assert(
@@ -392,6 +445,12 @@ function main() {
         assert(
           !state.confirmations[phase],
           "Confirmation already recorded; use rework first",
+        );
+        const summary = need("summary");
+        assert(
+          [...summary].length <= 60 &&
+            !/[\r\n\u0085\u2028\u2029]/u.test(summary),
+          "Confirmation summary must be a single line of at most 60 Unicode characters",
         );
         if (phase !== "merge") {
           assert(
@@ -413,7 +472,7 @@ function main() {
         }
         state.confirmations[phase] = {
           at: now,
-          summary: need("summary"),
+          summary,
           source: need("source"),
         };
         if (phase === "merge")

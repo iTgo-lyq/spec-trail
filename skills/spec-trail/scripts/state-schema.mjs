@@ -114,6 +114,37 @@ const confirmation = object({ at: timestamp, summary: text, source: text }, [
   "at",
   "summary",
 ]);
+const clarification = object(
+  {
+    round: (value, path, errors) => {
+      if (!Number.isSafeInteger(value) || value < 1)
+        report(errors, path, "must be a positive safe integer");
+    },
+    question: text,
+    recommendation: text,
+    answer: text,
+    source: text,
+    withdrawn: text,
+  },
+  ["round", "question", "recommendation"],
+);
+function clarifications(value, path, errors) {
+  if (!isObject(value)) return report(errors, path, "must be an object");
+  for (const [key, entry] of Object.entries(value)) {
+    const at = pointer(path, key);
+    if (
+      !/^Q[1-9][0-9]*$/.test(key) ||
+      !Number.isSafeInteger(Number(key.slice(1)))
+    )
+      report(errors, at, "must be Q followed by a positive safe integer");
+    clarification(entry, at, errors);
+  }
+}
+export function validateClarifications(value) {
+  const errors = [];
+  clarifications(value, "/clarifications", errors);
+  return errors;
+}
 const step = (result, extra = {}, required = []) =>
   object({ result, at: timestamp, summary: text, ...extra }, [
     "result",
@@ -192,6 +223,7 @@ const changeFields = object(
     children: list(id),
     dependsOn: list(id),
     previews: previewsRule,
+    clarifications,
     confirmations: object(
       {
         requirement: confirmation,

@@ -8,7 +8,10 @@
 | --- | --- |
 | `create` | `--title --size`；可选 `--depends-on id,id`、`--parent id`、`--children id,id`。在当前非守护分支建立 requirement 状态，不生成正文、不创建或切换 Git 分支、不覆盖已有目录。 |
 | `retitle` | `--title`；仅修改活动 Change 的展示标题，保留 id、阶段、任务与确认；需在所属分支运行。 |
-| `confirm` | `--phase requirement/technical/plan/merge --summary --source`。记录已有明确确认；需求确认进入 technical，large 技术确认进入 plan；执行另用 execute。medium/xlarge 技术与计划同次获确认时连续记录两次。merge 可附 `--source-commit --target-commit --base-commit`。 |
+| `confirm` | `--phase requirement/technical/plan/merge --summary --source`。summary 写阶段内容，优先 20–40 字符，最多 60 个 Unicode 码点、单句且不换行；source 写实际确认依据。需求确认进入 technical，large 技术确认进入 plan；执行另用 execute。medium/xlarge 技术与计划同次获确认时连续记录两次。merge 可附 `--source-commit --target-commit --base-commit`。 |
+| `clarification-ask` | `--round --text --recommendation`；可选 `--question Qn`，默认下一个编号，只能递增。保存实际问过的问题，round 为从 1 开始的正整数，同轮问题用同一值。 |
+| `clarification-answer` | `--question Qn --answer`，可附 `--source`。保存用户最终有效回答，更正覆盖同题答案；未提供 source 时清除旧来源，实质改变需求先按返工处理。 |
+| `clarification-withdraw` | `--question Qn --reason`。保留原问答并记不再适用的原因，不退额度；撤回后不再回答，需要时新增问题。 |
 | `task-add` | `--title`；可选 `--task Tn --branch`，默认分配下一个编号。完成任务不可覆盖，返修追加任务并更新 Plan。 |
 | `task-start` | `--task Tn`；检查当前执行安排与整条前置链均已完成，再从 todo/blocked → doing，并移除旧阻塞原因。 |
 | `task-block` | `--task Tn --reason`；保留任务定义，说明实际阻塞。 |
@@ -26,6 +29,8 @@
 
 ## 常用流程
 
+确认摘要示例：requirement「支持浏览器多身份添加、切换和移除。」；technical「采用身份集合与两阶段切换，隔离读取并支持撤销。」；plan「先交付添加与切换，再完成移除和设备撤销。」；merge「保留新版身份机制，合并工作台改动。」。确认原话另填 source。
+
 ```bash
 node .agents/skills/spec-trail/scripts/change.mjs create --change example --title '具体目标' --size small
 # 按实际需求编辑 requirement.md，然后登记任务。
@@ -40,6 +45,8 @@ node .agents/skills/spec-trail/scripts/change.mjs verify --change example --resu
 需要等待人工验收时使用 wait。用户已明确验收或授权交付/合入时，以实际原话填写 accept 的 source；small 自验收在 summary 标明“Agent 自验收”及逐项依据。完成 Specs 同步后执行 specs，再 archive；脚本不替这些实际步骤提供证据。
 
 ## 时间与失败
+
+问答命令不代替用户回答、不授予确认、不推进阶段或解除等待；支持在 active Change 补录创建前及先前会话问答，返工不清空记录。预算按主 skill 在发问前控制，命令不拒绝记录已发生的超额问答。无问答时省略 clarifications；已有归档无需补写，旧确认摘要不追溯长度限制。
 
 新时间统一为 UTC、三位毫秒 ISO 字符串；不接受 Agent 手填当前时间，不对读取端加时间容差。关闭步骤严格递增或相等，系统时钟早于前一步时拒绝写入，先核对时钟或实际历史记录。
 
