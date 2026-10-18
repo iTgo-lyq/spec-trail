@@ -13,7 +13,7 @@ description: SpecTrail 原型协作：选择 OpenFolio 或自建托管、Git 兜
 
 原型已启用时，按 UI 影响范围处理，不以 Change 规模代替判断：
 
-- 小型变化：先询问是否绘制原型；可先推进无关工作，较长时间未回复时说明后跳过。
+- 小型变化：先询问是否绘制原型；可先推进无关工作，较长时间未回复时说明后跳过绘制。
 - 大范围变化：实现前必须先绘制或更新原型，并提供预览。
 
 ```bash
@@ -41,6 +41,10 @@ setup 不安装框架，不覆盖已有文件；采用现有工程时提供 pack
 已有规范用 --design 引用，避免复制出第二份权威；没有时，setup 从 [模板](./assets/DESIGN.template.md) 生成包内 DESIGN.md，绘制前按项目事实补全。先读主题/token、共享组件和代表页面，必要时对照截图；写清视觉方向、色彩用途与数值、字阶、布局/断点、组件状态及无障碍约定。链接依据，区分现状与新决策；未知项标明待定，删除无关章节。后续原型沿用该规范。
 
 模板组织参考 [Google Stitch](https://github.com/google-labs-code/stitch-skills/blob/main/plugins/stitch-design/skills/extract-design-md/SKILL.md) 的源码提炼方法和 [Anthropic frontend-design](https://github.com/anthropics/claude-code/blob/main/plugins/frontend-design/skills/frontend-design/SKILL.md) 的设计方向约定；无需安装这些 skill 或接入其服务。
+
+### 原型验收
+
+只要绘制或更新了原型，无论 Change 规模，都必须提供预览并由用户明确验收通过，才能开始对应实现。
 
 ## 当前清单
 
@@ -105,10 +109,6 @@ node .agents/skills/spec-trail/prototype/scripts/publish.mjs register --git-entr
 
 ## 归档
 
-主 skill 完成验证、验收与 Specs 同步后提交归档。非空 previews 继续需要保留标签：
+主 skill 完成验证、验收与 Specs 同步后提交归档，再按[集成与清理命令](../references/integration.md)形成合并提交 M。归档命令将 Git 原型固定到本 Change 的 previews 快照目录，保留 sourceCommit；共享目录引用先复制，路径冲突则停止。已合入 Change 从 M 定位固定原型；Git HTML 读取归档快照，hosted 保留原版本、地址、摘要、截图和 sourceCommit。未合入来源仍固定到已推送 SHA。
 
-```bash
-node .agents/skills/spec-trail/prototype/scripts/archive.mjs --change change-id --push
-```
-
-分支与 `spec-trail/archive-v2/<id>` 标签均核实后才报告完成。相同提交可重试，不覆盖同名异提交标签。缺少标签或远端产物时明确说明，不回退其他版本。
+不创建保留标签，不改写已归档引用；旧归档没有有效 M 时留空，不用标签或显式 revision 回退。清理来源前验证 Git 文件、源码对象与托管产物可用性；已准备的公开版本独立保留。旧标签退出按集成命令中的切换顺序执行。

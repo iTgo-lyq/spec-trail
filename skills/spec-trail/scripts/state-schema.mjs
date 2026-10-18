@@ -219,6 +219,11 @@ const changeFields = object(
     parent: id,
     children: list(id),
     dependsOn: list(id),
+    followUpOf: id,
+    followUpTitle: stringRule(
+      /^(?=.*\S)[^\r\n]+$/,
+      "must be a non-empty single-line title",
+    ),
     previews: previewsRule,
     clarifications,
     confirmations: object(

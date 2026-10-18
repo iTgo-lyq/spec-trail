@@ -4,9 +4,12 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  openSync,
+  closeSync,
   readFileSync,
   readdirSync,
   renameSync,
+  rmdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -16,6 +19,7 @@ import { isDeepStrictEqual, parseArgs } from "node:util";
 import { validateChange, validateWorkflow } from "./state-schema.mjs";
 import { entryPath } from "../prototype/scripts/contract.mjs";
 import { parseTaskOrder, unfinishedPredecessors } from "./task-order.mjs";
+import { closedRecord } from "./routing.mjs";
 import {
   repository,
   collaborationCatalog,
@@ -23,7 +27,16 @@ import {
 } from "./repository.mjs";
 
 const commands = {
-  create: ["title", "size", "depends-on", "parent", "children"],
+  create: [
+    "title",
+    "size",
+    "depends-on",
+    "parent",
+    "children",
+    "follow-up-of",
+    "group-title",
+  ],
+  "follow-up": ["target", "group-title"],
   show: [],
   retitle: ["title"],
   "clarification-ask": ["question", "round", "text", "recommendation"],
@@ -291,6 +304,9 @@ function main() {
               : {}),
             ...(opts.parent ? { parent: opts.parent } : {}),
             ...(opts.children ? { children: list(opts.children) } : {}),
+            ...(opts["follow-up-of"]
+              ? { followUpOf: opts["follow-up-of"] }
+              : {}),
           }
         : JSON.parse(original);
     assert(
@@ -353,8 +369,7 @@ function main() {
     };
     const uniqueActive = () =>
       assert(
-        (branch === config.collaborationBranch &&
-          state.size === "xlarge") ||
+        (branch === config.collaborationBranch && state.size === "xlarge") ||
           !all.some(
             (r) =>
               !r.archived &&
@@ -367,7 +382,9 @@ function main() {
       );
     const availability = [];
     const dependency = (target, allowCancelled = false) => {
-      const routed = routedRecord(repo, catalog, target, { refresh: !opts["dry-run"] });
+      const routed = routedRecord(repo, catalog, target, {
+        refresh: !opts["dry-run"],
+      });
       const candidates = [{ ...routed, file: join(root, routed.path) }];
       assert(
         candidates.length === 1,
@@ -457,9 +474,209 @@ function main() {
       };
     };
     let archiveDir, indexRecovery;
+    const archiveCopies = [];
+    const checkFollowUp = (target) => {
+      const records = new Map(),
+        checked = new Set(),
+        checking = new Set();
+      const readPrior = (priorId) => {
+        if (records.has(priorId)) return records.get(priorId);
+        const record = routedRecord(repo, catalog, priorId, {
+          refresh: !opts["dry-run"],
+        });
+        const prior = record.state;
+        const valid = (condition) =>
+          assert(
+            condition,
+            `Follow-up history ${priorId} is not a valid published record`,
+          );
+        valid(!record.errors.length);
+        valid(
+          prior.size === "xlarge"
+            ? !Object.keys(prior.tasks).length &&
+                !prior.dependsOn?.length &&
+                !prior.parent
+            : !prior.children?.length,
+        );
+        valid(
+          !(
+            prior.size === "small" &&
+            ["technical", "plan"].includes(prior.stage)
+          ),
+        );
+        valid(
+          !(
+            ["medium", "xlarge"].includes(prior.size) && prior.stage === "plan"
+          ),
+        );
+        if (prior.status !== "cancelled") {
+          const phases =
+            prior.size === "small" || prior.stage === "requirement"
+              ? []
+              : prior.stage === "technical"
+                ? ["requirement"]
+                : prior.stage === "plan"
+                  ? ["requirement", "technical"]
+                  : ["requirement", "technical", "plan"];
+          valid(phases.every((phase) => prior.confirmations[phase]));
+          if (prior.stage === "close")
+            valid(
+              Object.values(prior.tasks).every(
+                (task) => task.status === "done",
+              ),
+            );
+        }
+        for (const [i, key] of steps.entries()) {
+          const step = prior.closure[key];
+          if (!step) continue;
+          const previous = prior.closure[steps[i - 1]];
+          valid(prior.stage === "close");
+          if (i)
+            valid(
+              previous &&
+                prior.closure.verification?.result === "passed" &&
+                Date.parse(step.at) >= Date.parse(previous.at),
+            );
+        }
+        if (prior.status === "completed") {
+          valid(record.archived && closedRecord(prior, dirname(record.path)));
+          valid(
+            !git([
+              "ls-tree",
+              "-r",
+              "--name-only",
+              record.commit,
+              "--",
+              `docs/project/changes/${priorId}/`,
+            ]).trim(),
+          );
+          valid(
+            prior.size === "xlarge"
+              ? prior.children?.length
+              : Object.keys(prior.tasks).length,
+          );
+          let plan;
+          try {
+            plan = git([
+              "show",
+              `${record.commit}:${dirname(record.path)}/plan.md`,
+            ]);
+          } catch {
+            /* Missing Plan is checked below. */
+          }
+          valid(
+            ["valid", "not-applicable"].includes(
+              parseTaskOrder(prior, plan).status,
+            ),
+          );
+        } else valid(!record.archived);
+        records.set(priorId, record);
+        return record;
+      };
+      // Validate the predecessor's existing history, without making it an
+      // execution prerequisite of the new Change or requiring Git ancestry.
+      const validateHistory = (priorId) => {
+        assert(
+          !checking.has(priorId),
+          "Follow-up history has a dependency/child cycle",
+        );
+        if (checked.has(priorId)) return;
+        checking.add(priorId);
+        const prior = readPrior(priorId).state;
+        if (prior.parent) {
+          const parent = readPrior(prior.parent).state;
+          assert(
+            parent.size === "xlarge" && parent.children?.includes(priorId),
+            `Follow-up history ${priorId} has an invalid parent`,
+          );
+        }
+        for (const dependencyId of prior.dependsOn ?? []) {
+          assert(
+            dependencyId !== prior.parent,
+            `Follow-up history ${priorId} depends on its parent`,
+          );
+          const dependency = readPrior(dependencyId).state;
+          validateHistory(dependencyId);
+          assert(
+            prior.status !== "completed" || dependency.status === "completed",
+            `Follow-up history ${priorId} has an unfinished dependency`,
+          );
+        }
+        for (const childId of prior.children ?? []) {
+          const child = readPrior(childId).state;
+          assert(
+            child.parent === priorId && child.size !== "xlarge",
+            `Follow-up history ${priorId} has an invalid child`,
+          );
+          validateHistory(childId);
+          assert(
+            prior.status !== "completed" ||
+              ["completed", "cancelled"].includes(child.status),
+            `Follow-up history ${priorId} has an unfinished child`,
+          );
+        }
+        checking.delete(priorId);
+        checked.add(priorId);
+      };
+      const visited = new Set([id]);
+      const titles = new Set();
+      while (target) {
+        assert(
+          !visited.has(target),
+          "Follow-up cannot reference itself or form a cycle",
+        );
+        visited.add(target);
+        const record = readPrior(target);
+        const prior = record.state;
+        assert(
+          record.archived && prior.status === "completed",
+          `Follow-up target ${target} must be a valid published archive`,
+        );
+        validateHistory(target);
+        if (prior.followUpTitle) titles.add(prior.followUpTitle);
+        target = prior.followUpOf;
+      }
+      return titles;
+    };
+    const setFollowUp = (target) => {
+      const titles = checkFollowUp(target);
+      if (state.followUpOf !== target) delete state.followUpTitle;
+      state.followUpOf = target;
+      if (opts["group-title"] !== undefined) {
+        const title = need("group-title").trim();
+        assert(
+          !titles.size || (titles.size === 1 && titles.has(title)),
+          "Keep the existing follow-up group title; inspect conflicting history before renaming",
+        );
+        state.followUpTitle = title;
+      }
+    };
     switch (command) {
       case "create":
+        assert(
+          opts["group-title"] === undefined || state.followUpOf,
+          "--group-title requires --follow-up-of",
+        );
+        if (state.followUpOf) setFollowUp(state.followUpOf);
         break;
+      case "follow-up": {
+        const target = need("target");
+        if (target === "none") {
+          assert(
+            opts["group-title"] === undefined,
+            "Cannot name a removed follow-up group",
+          );
+          delete state.followUpOf;
+          delete state.followUpTitle;
+        } else {
+          assert(
+            /^[a-z0-9]+(-[a-z0-9]+)*$/.test(target),
+            "Invalid follow-up target id",
+          );
+          setFollowUp(target);
+        }
+        break;
+      }
       case "retitle":
         state.title = need("title");
         break;
@@ -768,6 +985,7 @@ function main() {
         recordStep("specs", opts.result);
         break;
       case "archive": {
+        assert(branch !== config.collaborationBranch, "Handoff to an independent closing branch before archiving; this also applies to xlarge parents");
         requireStage("close");
         unblocked();
         completeTasks();
@@ -783,15 +1001,18 @@ function main() {
         assert(!existsSync(archiveDir), "Archive destination already exists");
         recordStep("archive", "done", { path: relative(root, archiveDir) });
         for (const entry of state.previews ?? []) {
-          if (
-            entry.artifact?.type === "git" &&
-            entry.artifact.path.startsWith(
-              relative(root, liveDir) + "/previews/",
-            )
-          )
-            entry.artifact.path =
-              relative(root, archiveDir) +
-              entry.artifact.path.slice(relative(root, liveDir).length);
+          if (entry.artifact?.type !== "git") continue;
+          const sourcePath = entryPath(entry, config.prototype, relative(root, liveDir));
+          assert(sourcePath && lstatSync(safe(sourcePath)).isFile(), "Archive requires a regular prototype index.html");
+          let path = entry.artifact.path;
+          if (!path.startsWith(relative(root, liveDir) + "/previews/")) {
+            path = `${relative(root, liveDir)}/previews/${entry.id}`;
+            const target = safe(`${path}/index.html`), content = readFileSync(safe(sourcePath));
+            if (existsSync(target))
+              assert(lstatSync(target).isFile() && readFileSync(target).equals(content), `Archive prototype destination differs: ${path}`);
+            else archiveCopies.push({target, content});
+          }
+          entry.artifact.path = relative(root, archiveDir) + path.slice(relative(root, liveDir).length);
         }
         state.status = "completed";
         break;
@@ -876,6 +1097,13 @@ function main() {
     );
     if (original === null) mkdirSync(liveDir, { recursive: true });
     const temporary = join(dirname(file), `.change-${randomUUID()}.tmp`);
+    const copiedFiles = [], createdDirectories = [];
+    const makeSnapshotDirectory = (path) => {
+      if (existsSync(path)) return;
+      makeSnapshotDirectory(dirname(path));
+      mkdirSync(path);
+      createdDirectories.push(path);
+    };
     let updatedBlob;
     try {
       writeFileSync(temporary, json(state), {
@@ -911,6 +1139,14 @@ function main() {
         updatedBlob = blob;
       }
       if (archiveDir) {
+        for (const {target, content} of archiveCopies) {
+          safe(target);
+          makeSnapshotDirectory(dirname(target));
+          const descriptor = openSync(target, "wx");
+          copiedFiles.push(target);
+          try { writeFileSync(descriptor, content); }
+          finally { closeSync(descriptor); }
+        }
         mkdirSync(archiveRoot, { recursive: true });
         renameSync(liveDir, archiveDir);
         try {
@@ -924,6 +1160,8 @@ function main() {
         }
       } else renameSync(temporary, file);
     } catch (error) {
+      for (const path of copiedFiles.reverse()) rmSync(path, {force: true});
+      for (const path of createdDirectories.reverse()) rmdirSync(path);
       if (
         updatedBlob &&
         git(["rev-parse", `:${relative(root, file)}`]) === updatedBlob
@@ -940,8 +1178,8 @@ function main() {
       rmSync(temporary, { force: true });
     }
     result.next =
-      archiveDir && state.previews?.length
-        ? "Commit archive and outputs, then run prototype/scripts/archive.mjs --change <id> --push; verify the remote branch and retained tag."
+      archiveDir
+        ? `Commit and push the archived source, then run scripts/integration.mjs merge --change ${state.id}; verify delivery before cleanup. Do not create retention tags or edit the archive.`
         : "Review the local diff, commit and push. A local command is not a published workflow fact.";
     console.log(json(result));
   } finally {

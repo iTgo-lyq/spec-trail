@@ -98,15 +98,16 @@ function ready(repo, catalog, record, note, refresh) {
   assert(!validateChange(state).length, "The planning record is invalid");
   assert(
     state.status === "active" &&
-      state.size !== "xlarge" &&
-      ["requirement", "technical", "plan"].includes(state.stage),
-    "Only an active ordinary planning Change can be handed off",
+      (state.size === "xlarge"
+        ? ["plan", "execution", "close"].includes(state.stage)
+        : ["requirement", "technical", "plan"].includes(state.stage)),
+    "Handoff requires ordinary planning or an xlarge parent ready to close",
   );
   assert(
     !state.waitingFor,
     "Resolve the actual waiting condition before handoff",
   );
-  assert(Object.keys(state.tasks).length, "Define tasks before handoff");
+  if (state.size !== "xlarge") assert(Object.keys(state.tasks).length, "Define tasks before handoff");
   for (const name of state.size === "small"
     ? ["requirement"]
     : ["requirement", "technical", "plan"])
@@ -120,8 +121,19 @@ function ready(repo, catalog, record, note, refresh) {
   } catch (error) {
     if (state.size !== "small") throw error;
   }
-  const order = parseTaskOrder(state, plan);
-  assert(order.status === "valid", "The task execution order is not valid");
+  if (state.size === "xlarge") {
+    assert(state.children?.length, "Define children before parent closing handoff");
+    for (const id of state.children) {
+      const child = routedRecord(repo,catalog,id,{refresh});
+      assert(!child.errors.length && child.state.parent === state.id &&
+        (child.state.status === "cancelled" ||
+          (child.archived && child.branch === catalog.branch && closedRecord(child.state,child.directory))),
+        `Child ${id} must be cancelled or centrally archived before parent closing handoff`);
+    }
+  } else {
+    const order = parseTaskOrder(state, plan);
+    assert(order.status === "valid", "The task execution order is not valid");
+  }
   for (const id of state.dependsOn ?? []) {
     const source = routedRecord(repo, catalog, id, { refresh });
     assert(
