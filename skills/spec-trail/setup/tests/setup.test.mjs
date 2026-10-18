@@ -25,11 +25,16 @@ const skill = fileURLToPath(new URL("../../", import.meta.url));
 const resourcePaths = [
   "setup/scripts/pre-commit.js",
   "scripts/state-schema.mjs",
+  "scripts/routing.mjs",
   "prototype/scripts/contract.mjs",
 ];
 const checkCommand =
   'node "$(git rev-parse --show-toplevel)/.agents/skills/spec-trail/setup/scripts/pre-commit.js"';
-const validWorkflow = { schemaVersion: 1, protectedBranches: ["main"] };
+const validWorkflow = {
+  schemaVersion: 2,
+  collaborationBranch: "develop",
+  protectedBranches: ["main"],
+};
 const invalidWorkflow = { schemaVersion: 1, protectedBranches: [] };
 const at = "2024-02-29T12:30:00.125+08:00";
 const validChange = {
@@ -118,6 +123,8 @@ function sandbox(t) {
     mkdirSync(repo);
     git(repo, ["init", "--initial-branch=main"]);
     identity(repo);
+    git(repo, ["commit", "--allow-empty", "-m", "Initial repository"]);
+    git(repo, ["branch", "develop"]);
     return repo;
   }
   const check = (repo, expected = 0) =>
@@ -474,7 +481,7 @@ test("setup reports missing resources and invalid configuration without repairin
   assert.equal(
     missing.resources.filter((resource) => resource.status === "not_ready")
       .length,
-    3,
+    4,
   );
   assert.deepEqual(s.snapshot(repo), before);
   s.provision(repo);
@@ -535,7 +542,12 @@ test("setup rejects broken script syntax and unusable shared modules", (t) => {
   s.git(repo, ["add", "docs/project"]);
   const contractBefore = s.snapshot(repo);
   const brokenContract = s.check(repo, 1);
-  assert.equal(brokenContract.resources[2].status, "not_ready");
+  assert.equal(
+    brokenContract.resources.find((r) =>
+      r.path.endsWith("prototype/scripts/contract.mjs"),
+    ).status,
+    "not_ready",
+  );
   assert.deepEqual(s.snapshot(repo), contractBefore);
   s.run(
     process.execPath,
@@ -596,6 +608,72 @@ test("delegated hook integration survives regeneration and remains unverified by
   assert.match(rejected, /\/protectedBranches/);
   assert.doesNotMatch(rejected, /after-validation/);
   assert.equal(s.git(repo, ["rev-parse", "HEAD"]).trim(), head);
+});
+
+test("setup requires a configured collaboration branch and reports permissions without modifying refs", (t) => {
+  const s = sandbox(t),
+    repo = s.makeRepo("collaboration setup");
+  s.provision(repo);
+  const before = s.snapshot(repo),
+    ready = s.check(repo);
+  assert.equal(ready.collaboration.branch, "develop");
+  assert.equal(ready.collaboration.defaultMergeTarget, "develop");
+  assert.equal(ready.collaboration.remotePermissions, "unverified");
+  assert.deepEqual(s.snapshot(repo), before);
+  s.git(repo, ["branch", "-D", "develop"]);
+  assert.match(
+    s.check(repo, 1).issues.join("\n"),
+    /prepare collaboration branch develop/,
+  );
+  s.write(repo, "docs/project/workflow.json", {
+    schemaVersion: 1,
+    protectedBranches: ["main"],
+  });
+  assert.match(s.check(repo, 1).issues.join("\n"), /complete SpecTrail Setup/);
+});
+
+test("inherited preview records skip local artifact checks but still require valid staged structure", (t) => {
+  const s = sandbox(t),
+    repo = s.makeRepo("inherited previews");
+  s.provision(repo);
+  s.git(repo, ["switch", "develop"]);
+  s.write(repo, "docs/project/workflow.json", {
+    ...validWorkflow,
+    prototype: { status: "enabled", packagePath: "packages/prototype" },
+  });
+  const path = "docs/project/changes/feature/change.json";
+  const value = {
+    ...validChange,
+    previews: [
+      {
+        id: "card",
+        title: "Card",
+        kind: "component",
+        viewport: { width: 400, height: 300 },
+        artifact: {
+          type: "git",
+          path: "packages/prototype/preview/card",
+          sourceCommit: "a".repeat(40),
+        },
+      },
+    ],
+  };
+  s.write(repo, path, value);
+  s.git(repo, ["add", "docs/project"]);
+  const validator = join(
+    repo,
+    ".agents/skills/spec-trail/setup/scripts/pre-commit.js",
+  );
+  s.run(process.execPath, [validator], repo);
+  s.write(repo, path, { ...value, title: "" });
+  s.git(repo, ["add", path]);
+  assert.match(s.run(process.execPath, [validator], repo, 1), /\/title/);
+  s.write(repo, path, { ...value, branch: "develop" });
+  s.git(repo, ["add", path]);
+  assert.match(
+    s.run(process.execPath, [validator], repo, 1),
+    /unknown source commit/,
+  );
 });
 
 test("setup accepts subdirectories and rejects bare or non-Git directories", (t) => {

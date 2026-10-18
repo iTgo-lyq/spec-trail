@@ -16,18 +16,20 @@ description: 管理单个 Git 仓库 docs/project 下的需求、技术方案、
 - **复用已有 Change**：目标被现有 `active` Change 覆盖时询问用户是否复用。
 - **需要新建**：按[创建与规模](#创建与规模)完成简短确认，再建立 Change。
 
-当前阶段从本地仓库已有分支和 worktree 查找 Change，默认范围为 `docs/project/changes/`，按 id 识别，以 `branch` 指定分支的本地记录为准；后续接入 open-folio 服务提供的 CLI 查询。
+先读取当前仓库 `docs/project/workflow.json`，从协作分支的 changes/archive 按 id 定位 Change，再按 `change.json.branch` 定向读取目标分支。有效的集中 completed 归档直接作为只读历史；进行中的集中副本可以保留旧状态，不作当前进度依据。通过 Git worktree 登记定位本地执行工作区，不扫描所有分支猜测归属。
 
 日常调查与搜索默认排除 `docs/project/archive/`，优先读取当前 Specs、未归档 Change 和实现；仅明确需要追溯历史时，按相关 Change 或主题限定归档搜索范围。ID 查重、依赖及子 Change 状态核对可按 ID 定点读取归档元数据，不扩展为历史正文搜索。
 
 ### 分支与协作
 
-- 每个 Change 只有一个主分支，由 `change.json.branch` 指定，默认 `change/<id>`。同一分支同时只开发一个 Change（execution / close），规划中的可以有多个；依赖尚未合入的 Change 时可在对方分支规划，满足[Change 依赖](#change-之间的依赖)后再开发。
-- `change.json` 只在 Change 分支更新；可选任务分支使用 `task/<id>/T<n>`，只提交实现和证据。
-- 守护分支不直接开发。开始开发前 `git fetch` 并同步落后的分支。当前分支存在已取消 Change 时停止开发，冻结范围与仅规划取消的例外见[取消](#取消-change)。
+- 协作分支由 `workflow.json.collaborationBranch` 指定，推荐名称为 `develop`，不限制项目自定义名称，兼任集中讨论和预发布集成分支。主工作区使用项目实际配置的协作分支，不随 Change 或任务切换分支；所有 Change 完成后默认合入这里。保护分支只在用户主动要求时合入或创建 PR，不在普通关闭后反复询问发布方式。
+- 新 Change 在协作分支规划，branch 指向自身。实现前从最新协作分支创建独立工作分支（默认 `change/<id>`）、worktree 和执行会话，集中 change.json.branch 登记目标；不替换文件格式、不清理规划目录或镜像执行状态。
+- 新 worktree 默认放在主工作区同级的 `<项目名>-worktrees/<工作区名>`，项目名取主工作区目录名，Change 工作区名默认使用 id；已有登记优先复用，用户明确指定路径时沿用，不为统一命名搬动已有工作区。项目的构建和长期服务位置遵循项目约定，SpecTrail 不要求另建服务 checkout。
+- 工作分支只推进所属 Change；继承的其他记录按集中入口读取。只有所属分支更新完整状态，集中分支仅登记工作分支；任务分支仍可用 `task/<id>/T<n>`，只提交实现和证据。普通 Change 不在协作分支进入实现，多个 xlarge 规划父项可在此聚合与关闭。
+- 开始实现前定向同步协作分支与所需工作分支，核对实际 cwd、分支和仓库身份。创建 worktree 或 shell cd 不等于会话绑定；客户端不能准确自动绑定时输出路径和续接提示，由用户打开目标工作区后核验。优先继续已有执行会话；同一 worktree 的多个写入会话需协调。
 - 调查和规划可并行；实现边界独立时可使用分支或 worktree。共享行为、Spec、契约、迁移或核心文件重叠时串行协调，small 也不例外。
 
-首次接入按 [Setup 子 skill](./setup/SKILL.md) 核实实际默认分支和保护规则、登记 `WorkflowConfig` 并检查校验环境，由业务项目的用户或 Agent 接入提交校验并验证；完成后再开始产品开发。
+首次接入按 [Setup 子 skill](./setup/SKILL.md) 提前登记协作/预发布分支（推荐名称 develop）、保护分支和实际平台规则，准备分支与主工作区，再接通提交校验。OpenFolio 接入时直接指定协作分支，读取其项目配置、当前内容、原型策略与 Change 入口，不依赖默认分支配置或保护分支存在。仅支持 workflow v2；未配置协作来源的项目须先完成 Setup，不保留旧工作流运行兼容或全量分支扫描。保护分支只用于发布约束。
 
 ## 文档与事实来源
 
@@ -35,7 +37,7 @@ description: 管理单个 Git 仓库 docs/project 下的需求、技术方案、
 
 | 位置（相对 `docs/project/`） | 职责 |
 | --- | --- |
-| `workflow.json` | 实际守护分支配置 |
+| `workflow.json` | 协作分支、保护分支与项目配置 |
 | `specs/<capability-path>/spec.md` | 当前已实现、验证且仍有效的产品能力与核心技术方案；内容范围见[Specs 同步](#关闭与-specs) |
 | `changes/<id>/` | 尚未归档的 Change，含正文、状态和证据；取消的 Change 也保留在这里 |
 | `archive/YYYY-MM-DD-<id>/` | 已完成关闭的完整 Change，作为只读历史保存 |
@@ -64,7 +66,7 @@ Markdown 不维护阶段、完成勾选、任务或审批状态，也不能用�
 
 ## 状态操作入口
 
-常规 `change.json` 创建和修改统一使用主 skill 自带的 [语义命令](./references/state-commands.md)：`node .agents/skills/spec-trail/scripts/change.mjs <command> --change <id>`。调用前按需读取命令说明；不要手写 JSON、用通用 patch 或临时 Python/JS 拼接状态。正文 Markdown 继续直接编辑，下面的字段定义用于阅读与校验。
+分支移交与工作区定位使用 [工作区命令](./references/workspaces.md)，其中 handoff 仅负责 branch 登记。其余常规 `change.json` 创建和修改统一使用主 skill 自带的 [语义命令](./references/state-commands.md)：`node .agents/skills/spec-trail/scripts/change.mjs <command> --change <id>`。调用前按需读取命令说明；不要手写 JSON、用通用 patch 或临时 Python/JS 拼接状态。正文 Markdown 继续直接编辑，下面的字段定义用于阅读与校验。
 
 脚本负责 UTC 毫秒时间、操作前置、失效状态清理和原子写入；Agent 负责实际确认、验证证据、正文一致性与提交推送。历史勘误按[文档与事实来源](#文档与事实来源)处理。共享校验在 `scripts/state-schema.mjs`，hook 与语义命令共用，保持零第三方依赖。
 
@@ -84,8 +86,9 @@ Markdown 不维护阶段、完成勾选、任务或审批状态，也不能用�
 type ISODateTime = string; // 脚本写 UTC 三位毫秒 ISO 时间；读取接受有效的 ISO 8601 时区格式
 
 interface WorkflowConfig {
-  schemaVersion: 1;
-  protectedBranches: string[]; // 非空、去重；实际本地分支名，不带远程前缀或通配符
+  schemaVersion: 2;
+  collaborationBranch: string; // 推荐名称 develop，可自定义；集中规划、预发布集成和默认合入目标
+  protectedBranches: string[]; // 非空、去重，与协作分支角色分离；用户主动要求才发布
   openfolioUrl?: string | null; // 缺失为未询问，null 为无自建服务
   prototype?: PrototypeConfig; // 可选原型接入；缺失表示未选择
 }
@@ -144,7 +147,7 @@ interface ChangeState {
   size: "small" | "medium" | "large" | "xlarge";
   status: "active" | "completed" | "cancelled";
   stage: "requirement" | "technical" | "plan" | "execution" | "close";
-  branch: string; // 实际 Change 分支，默认 change/<id>
+  branch: string; // 规划时为协作分支；移交后指向实际工作分支，默认 change/<id>
   clarifications?: Record<`Q${number}`, Clarification>; // 实际问过的问题，编号递增且不复用
   previews?: PreviewEntry[]; // 可省略；记录本次固定交付；项目当前清单位于原型包 prototype.json
   dependsOn?: string[]; // 前置 Change id，去重；全部满足后执行，xlarge 父 Change 不填
@@ -207,23 +210,23 @@ interface ChangeState {
 用户认可后：
 
 1. 按字段约定生成 `id`，核对本地 Change、分支与该 ID 的归档元数据，避免重名。id 表达用户结果，不用纯日期或模糊名称，创建后不变；`title` 可调整。
-2. 从最新守护分支创建 `change/<id>`；在依赖分支规划时，`branch` 填实际分支。
-3. 在实际 Change 分支运行 `create` 建立目录与初始 JSON，传目标、规模与已有依赖/父子关系；脚本生成 `active` / `requirement` 和空流程记录。
+2. 核对已配置的协作分支与主工作区，先在此规划；不在创建时切换主工作区。
+3. 在协作分支运行 `create` 建立目录与初始 JSON，branch 指向协作分支；脚本生成 `active` / `requirement` 和空流程记录。实现前再移交到独立工作分支。
 4. 将已有目标、范围、方向、未决问题及外部材料写入 `requirement.md`，继续需求整理。
 
 ### Change 之间的依赖
 
 small / medium / large 用 `dependsOn` 声明同仓库的前置 Change，在 Requirement 说明用途，与 `parent / children` 独立。声明时目标必须已建立并推送；依赖不得重复、自指或成环，也不得与父等待子完成的关系构成循环，子 Change 不得依赖其父 Change。
 
-进入 execution 并开始实现前，所有前置 Change 都须满足：**已完成关闭、归档并推送，且所需交付已在当前分支可用**。独立分支默认等上游合入守护分支后再同步；同分支规划的 Change 在上游关闭且交付已在本分支时即可继续，不额外要求先合入守护分支。
+进入 execution 并开始实现前，所有前置 Change 都须满足：**已完成关闭、归档并推送，且所需交付已在当前分支可用**。默认等上游合入协作分支后同步，不要求先发布到保护分支。阶段状态从集中入口解析，不采用当前分支继承的旧副本；集成交付仍需核对，归档存在不代表代码未被回滚。
 
 依赖未满足时可继续调查、澄清和规划；准备执行时仍未满足，保留当前阶段和有效确认，设置 dependency 等待，说明缺少的交付和解除条件。依赖取消、缺失或状态异常均不算满足。解除等待后保留 `dependsOn`；调整依赖时同步用途说明，涉及目标或关键方案变化时按返工规则处理。
 
 ### xlarge 父子 Change
 
-父 Change 只维护整体目标、架构、共享契约与拆分，分支只放文档。Plan 列每个子 Change 的 id、目标、边界、依赖、执行顺序和预估规模；JSON 用 `children` 关联，不设实现任务。实际前置依赖由相关子 Change 在 `dependsOn` 声明，父 Plan 汇总，不在父 JSON 声明或向子 Change 自动继承。
+父 Change 只维护整体目标、架构、共享契约与拆分，可留在协作分支规划和关闭，不承担产品实现。Plan 列每个子 Change 的 id、目标、边界、依赖、执行顺序和预估规模；JSON 用 `children` 关联，不设实现任务。实际前置依赖由相关子 Change 在 `dependsOn` 声明，父 Plan 汇总，不在父 JSON 声明或向子 Change 自动继承。
 
-子 Change 从最新守护分支各建分支，用 `parent` 关联并引用父文档，按 small / medium / large 独立推进、验收、归档和合入，不再向下拆分。子状态只写入自身 JSON；调整拆分时同步父 Plan 和 `children`，改变整体目标或架构时回到父 Change 的相应阶段返工。全部子 Change 完成或取消后，父分支同步守护分支，验证整体目标及集成，再关闭。
+子 Change 先在协作分支规划，实现前从最新协作分支分别移交到工作分支，用 `parent` 关联并引用父文档；按 small / medium / large 独立推进、验收、归档和合回协作分支，不再向下拆分。子状态只写入自身 JSON；调整拆分时同步父 Plan 和 `children`，改变整体目标或架构时回到父 Change 的相应阶段返工。全部子 Change 完成或取消后，父项核对协作分支上的交付与整体集成，再关闭。
 
 ### 规模调整
 
@@ -419,7 +422,7 @@ Plan 引用 Requirement 与 Technical，说明交付目标、任务与整体验�
 
 ### 整体验证
 
-核对确认仍有效、Plan 与 JSON 一致、任务均已验证并提交推送、无未解释阻塞；运行与改动相称的整体验证，覆盖需求、验收、必要失败路径及边界，记录实际证据。xlarge 父 Change 要求全部子 Change 完成或取消，并已同步守护分支。
+核对确认仍有效、Plan 与 JSON 一致、任务均已验证并提交推送、无未解释阻塞；运行与改动相称的整体验证，覆盖需求、验收、必要失败路径及边界，记录实际证据。xlarge 父 Change 要求全部子 Change 完成或取消，并已集成到协作分支。
 
 | 规模 | 评审要求 |
 | --- | --- |
@@ -436,7 +439,7 @@ Plan 引用 Requirement 与 Technical，说明交付目标、任务与整体验�
 
 small 自验收时，Agent 对照 Requirement 逐项核对交付与证据，确认仍符合 small 范围且没有未解决的验收项，记录 `acceptance.result: accepted`。摘要明确写“Agent 自验收通过”及实际依据，`source` 记录 small 直接归档规则或用户的明确授权，不写成用户已验收。随后完成 Specs 同步和归档提交推送，一次报告结果；验收未通过时按返工规则处理。
 
-人工验收时，向用户提供实现摘要、验收对应结果、验证证据和已知限制。实际验收或用户明确要求将该交付合入守护分支后，用 `accept --mode user` 记录 `acceptance.result: accepted`，摘要引用原话或附 `source`；显式合入指令按已有授权执行，不再次索要同一确认。测试通过和事先“做完就行”的笼统指示不等于人工验收。
+人工验收时，向用户提供实现摘要、验收对应结果、验证证据和已知限制。实际验收或用户明确要求将该交付合入指定目标分支后，用 `accept --mode user` 记录 `acceptance.result: accepted`，摘要引用原话或附 `source`；显式合入指令按已有授权执行，不再次索要同一确认。测试通过和事先“做完就行”的笼统指示不等于人工验收。
 
 需要人工验收但尚未验收时保持 active / close 和等待项，不同步 Specs、不归档；需修改时按[返工规则](#确认等待与返工)处理。
 
@@ -459,9 +462,9 @@ Specs 以任意深度的稳定业务能力树组织，完整相对路径是能�
 
 尚未提交归档而需再改实现时，先移回 changes、恢复 active 并返工；已提交后按[归档只读约定](#文档与事实来源)处理。
 
-当前 Change 关闭不等于整条分支可合入；分支内全部 Change 的归档条件见[合码](#同仓库合码)。
+默认合入协作分支时仅核对所属 Change 已关闭及实际交付范围；其他 Change 的继承规划副本可以保留，见[合码](#同仓库合码)。
 
-归档提交推送成功、必要的原型保留标签经远端核实后，先按[同仓库合码](#同仓库合码)完成预检，再主动询问用户：直接合入 `main`（或项目实际目标守护分支）、发起 PR，还是暂不处理。提供归档提交、目标分支及预检结果；若有未归档 Change 等阻塞，说明解除条件。已有明确选择时沿用，不重复询问；归档本身不授权合入或创建 PR，选择 PR 也不授权合并 PR。
+归档提交和必要的原型保留标签经远端核实后，按[同仓库合码](#同仓库合码)默认集成到协作分支，无需再选择目标。保护分支合入或 PR 仅由用户主动要求触发；归档不授予保护分支发布授权，创建 PR 不授权合并 PR。已集成到协作分支的有效归档可直接阅读，branch 保留历史归属，不为已完成历史强制保留工作分支。
 
 ## 取消 Change
 
@@ -469,9 +472,9 @@ Specs 以任意深度的稳定业务能力树组织，完整相对路径是能�
 
 只提交推送取消记录及必要说明，已有未提交实现原样保留并向用户说明，不伪装为完成任务或混入取消提交。随后冻结该 Change 分支及其任务分支：保留在中心仓库，不删除、不开发、不合入；只允许完成取消检查点或修复其提交、推送失败，不能把 cancelled 改回 active。
 
-继续其他工作从不含未归档 Change 的最新守护分支另建分支 / worktree，优先独立 worktree 以免搬动未提交修改；转用代码在新 Change 下重新确认和验证。取消 xlarge 父 Change 时确认未完成子 Change 是否一并取消。
+继续其他工作从最新协作分支规划并移交到独立 worktree，保留取消分支和未提交现场；转用代码在新 Change 下重新确认和验证。取消 xlarge 父 Change 时确认未完成子 Change 是否一并取消。
 
-共用分支中，进入过开发的 Change 取消会冻结整条分支，其余规划文档复制到新分支继续；仅在规划阶段取消的 Change，推送取消记录后可从共用分支移除，记录留在 Git 历史中。
+协作分支中取消仅规划的 Change 只冻结该记录，保留取消记录和发现入口，不冻结其他规划。移交后取消仍在工作分支记录；集中入口继续指向它，清理分支必须同时检查活动和取消入口。
 
 ## 同仓库合码
 
@@ -480,18 +483,21 @@ Specs 以任意深度的稳定业务能力树组织，完整相对路径是能�
 | 方向 | 方式与条件 |
 | --- | --- |
 | 任务分支 → Change 分支 | 普通 merge，不 squash；任务已验证，合回后更新任务状态 |
-| 守护分支 → Change 分支 | merge；Change 分支未取消 |
-| Change 分支 → 守护分支 | 可以 squash；整个源提交没有未归档 Change，已有合码授权 |
+| 协作分支 → Change 分支 | 在独立 worktree 内 merge；Change 分支未取消 |
+| Change 分支 → 协作分支 | 同步并验证后普通快进推送，不 squash；仅本次交付须已关闭 |
+| 协作分支 → 保护分支 | 用户主动要求后准备验证过的完整交付树，过滤 changes，以目标为父提交或创建 PR |
 
-先只读核实仓库、源目标分支、worktree、目标守护分支的 workflow 配置、两侧提交、merge base、工作区与相关 Change / Specs，`git fetch` 后以中心仓库提交为准。用 diff、log 和可用的 merge-tree 评估文本与语义冲突，不在含用户修改的工作区试合并。
+先只读核实仓库、源目标分支、worktree、workflow 分支职责、两侧提交、merge base、工作区与相关 Change / Specs，定向 fetch 后以中心仓库提交为准。用 diff、log 和可用的 merge-tree 评估文本与语义冲突，不在含用户修改的工作区试合并。
 
 普通可机械处理的差异按既定方案解决。有大量冲突、行为分歧或共享契约变化时，在尚未归档 Change 的 `merge-technical.md` 记录确切源 / 目标 / base 提交、需保留的行为、冲突决策、顺序、失败恢复和验证方法。只对新决策请求确认，用 `confirmations.merge` 记录时间摘要，可附三侧提交。实质改变需求或方案时按返工规则更新原文；新的实现修正追加任务。
 
-先在 Change 分支完成同步、必要返工和正常关闭，再合入守护分支。预检后任一提交变化都重做相关检查；仅提交号变化且无实质差异时沿用有效决策。
+先在 Change 的独立工作区同步最新协作分支、处理冲突、验证并完成正常关闭，再普通快进推送到协作分支。主工作区只在干净时快进，不承担合码冲突处理。预检后任一提交变化都重做相关检查；仅提交号变化且无实质差异时沿用有效决策。
 
-合入守护分支前固定源提交，整个提交的 `docs/project/changes/` 下不能有任何文件，不以当前 Change 或其 status 为限。核对目标最新提交、实际合并结果和相关代码检查，结果树也必须满足此条件。
+默认集成允许保留其他 Change 的规划目录；所属 Change 归档随同一次合码进入，解决该 ID 的 live/archive 冲突，不另做批量清理。
 
-已有授权且检查通过后合并；未授权时先准备具体可审阅结果，再请求最终授权。最终集成证据留在 Git / CI，不改只读 archive。目标变化需实质返工时，从最新守护分支建新 Change；旧交付尚未合入时可把已归档提交纳入新分支，再验证与归档。
+保护分支发布时固定验证过的协作源提交和目标提交，在隔离候选中形成不含 `docs/project/changes/` 的完整交付树，以保护分支为单一父提交或创建 PR。不把过滤提交整体合回协作分支，以免删除规划；热修复优先在协作分支完成，保护分支独立修改先核对保留，不能用交付树覆盖。部分 Change 发布另按用户明确范围处理，不自动推断组合。
+
+已有授权且检查通过后合并；未授权时先准备具体可审阅结果，再请求最终授权。最终集成证据留在 Git / CI，不改只读 archive。目标变化需实质返工时，从最新协作分支规划新 Change；旧交付尚未合入时可把已归档提交纳入新分支，再验证与归档。
 
 ## 提交与推送
 
@@ -499,6 +505,6 @@ Specs 以任意深度的稳定业务能力树组织，完整相对路径是能�
 
 每个检查点提交后立即推送同名分支，请求审阅或阶段确认前相关文档应已推送；创建前简短确认除外。提交失败保留工作区，用 `task-retry` 恢复尚未提交的任务状态，见[执行](#执行)；推送失败保留本地提交、修复并重试，如实报告未同步。
 
-合码方式见[同仓库合码](#同仓库合码)。Change 与任务分支不 squash、不改写已推送提交，未推送的本地提交可 rebase；合入守护分支后保留 Change 分支，任务分支合回后可删除。创建 PR、合入守护分支、发布或改写历史按用户已有授权执行，关闭本身不隐含这些授权。
+合码方式见[同仓库合码](#同仓库合码)。Change 与任务分支不 squash、不改写已推送提交，未推送的本地提交可 rebase。默认不删除工作分支；用户要求清理时核对交付已集成、无活动或取消入口依赖，并保护未提交现场。默认集成协作分支沿本规则执行；保护分支合入、PR 或正式发布须由用户主动要求。
 
 完成操作后说明实际结果、位置、验证及提交推送状态；关闭时报告 Specs 范围与归档提交，取消时说明代码保留、分支冻结与取消记录。未完成、未验收或未推送时不宣称完成。

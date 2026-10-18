@@ -1,25 +1,55 @@
 ---
 name: spec-trail-setup
-description: 首次或更新接入 SpecTrail 时，登记守护分支、只读检查校验环境与文件，并指导用户或业务 Agent 接入提交校验。常规 Change 推进使用主 SpecTrail skill。
+description: 首次或更新接入 SpecTrail 时，配置协作/预发布分支和保护分支，准备主工作区，检查环境并接通提交校验。常规 Change 推进使用主 SpecTrail skill。
 ---
 
 # 接入 SpecTrail
 
 SpecTrail 提供校验脚本、调用命令和只读 setup 检查。用户或业务项目的 Agent 根据项目现有流程完成 hook 接入，SpecTrail 不规定 hook 目录或管理工具。
 
-校验使用 Node.js 20+、Git 和 Node.js 内置模块，无需第三方依赖。守护分支配置、skill 中的校验脚本及业务方维护的接入文件随仓库交付；本机 Git 配置不提交。只在 `.git/hooks` 写本机入口不算完成可共享接入。
+校验使用 Node.js 20+、Git 和 Node.js 内置模块，无需第三方依赖。分支配置、skill 中的校验脚本及业务方维护的接入文件随仓库交付；本机 Git 配置不提交。只在 `.git/hooks` 写本机入口不算完成可共享接入。
+
+## 先配置分支与工作区
+
+创建 Change 前完成以下接入，沿用用户已有明确选择，不重复询问：
+
+1. 核对仓库、remote、托管默认分支和实际权限/保护规则。协作分支名称优先沿用项目选择，推荐 `develop`，兼任讨论入口、预发布分支和所有 Change 的默认合入目标；保护分支（例如 main）仅在用户主动要求时合入或创建 PR。两种工作流角色分开登记，不能自动撤销平台保护。
+2. 在 `docs/project/workflow.json` 保存 `schemaVersion: 2`、`collaborationBranch` 和非空 `protectedBranches`，保留原型及服务配置。已有同名协作分支先检查用途与内容；缺失时在接入授权内从核对过的基线准备，不覆盖分支。新仓库先提交接入文件才能建立分支引用。
+3. 主工作区使用 workflow.json 配置的协作分支（develop 只是推荐名），用于规划和发现，不随任务切分支；执行在独立工作分支/worktree。默认路径为主工作区同级的 `<项目名>-worktrees/<工作区名>`，项目名取主工作区目录名，Change 默认用 id。已有工作区优先复用，显式路径按用户约定；切换前检查脏文件、已有 worktree 和会话，不搬动未提交现场。构建与长期服务沿用项目约定，主工作区可以继续承担这些用途，不因接入而迁走服务或另建服务 checkout。
+4. 将配置与校验器提交到所选协作分支。OpenFolio 自动发现初次尝试推荐名称 develop；自定义名称通过「用仓库地址检查」填写并保存，须与该分支 workflow.json.collaborationBranch 一致。后续发现沿用保存的选择，阅读链接和最近仓库偏好保留实际分支。本地 CLI 使用当前工作树配置。后台不读取默认分支配置、不检查保护分支是否存在；无需为接入发布到保护分支。缺少有效协作配置时提示 Setup，不回退到其他分支或全量扫描。
+5. 旧项目从已知 Change、已有 worktree 和明确提供的分支登记入口，保留工作分支和完整 JSON；不引入新的引用文件或历史状态镜像，不为迁移扫描全部分支。报告覆盖依据和未解决项，不声称已自动发现所有未知工作。
+
+示例（名称以用户已有配置为准）：
+
+```json
+{ "schemaVersion": 2, "collaborationBranch": "develop", "protectedBranches": ["main"] }
+```
 
 ## 准备检查
 
-1. 确认目标 Git 仓库、默认分支和实际保护规则，按主 skill 的 `WorkflowConfig` 在 `docs/project/workflow.json` 登记实际守护分支，保留已有有效配置。没有 remote 时说明登记的是本地约定，尚无服务端保护。
-   校验器位于 `.agents/skills/spec-trail/setup/scripts/pre-commit.js`，依赖同一 skill 内的 `scripts/state-schema.mjs` 与 `prototype/scripts/contract.mjs`；缺少文件时补齐 skill 交付，不将校验逻辑复制进业务 hook。
+1. 核对上述配置与分支准备。没有 remote 时说明登记的是本地约定，尚无共享入口或服务端保护。
+   校验器位于 `.agents/skills/spec-trail/setup/scripts/pre-commit.js`，依赖同一 skill 内的 `scripts/state-schema.mjs`、`scripts/routing.mjs` 与 `prototype/scripts/contract.mjs`；缺少文件时补齐 skill 交付，不复制校验逻辑到业务 hook。
 2. 从任意目录运行，`<setup-dir>` 指本文件所在目录：
 
    ```bash
    node <setup-dir>/scripts/check-setup.mjs <repo-dir>
    ```
 
-   检查器只读取目标仓库，不创建或复制文件、不修改 Git 配置、不执行业务 hook。JSON 输出 `readiness`、资源与配置问题、调用命令和 Git 入口信息；退出码 0 表示准备就绪，1 表示环境或文件需修正。`hook.status` 始终为 `unverified`，准备就绪不代表提交校验已接通。
+   检查器只读取目标仓库，不创建或复制文件、不修改 Git 配置、不执行业务 hook。JSON 输出 `readiness`、资源/配置问题、协作分支的已知引用、默认合入目标、调用命令和 Git 入口信息；退出码 0 表示本地准备就绪，1 表示需修正。已知本地或远程跟踪引用不证明远端仍存在；Agent 另用精确 ref 查询核实远端与平台权限。`remotePermissions` 和 `hook.status` 为 `unverified`，检查成功不代表权限与 hook 已验证。
+
+## 已配置项目的入口检查
+
+先完成 workflow v2 配置；旧版配置不会被校验器或流程命令接受。只读预览使用当前仓库配置、指定基线（省略时为协作分支）、Git worktree 登记与明确给出的工作分支：
+
+```bash
+node <setup-dir>/scripts/preview-routing.mjs --repo <repo-dir> --work-branch change/example
+```
+
+work-branch 可重复提供。脚本不联网、不扫描全部分支、不改 Git 引用/暂存区/工作文件；输出覆盖依据、每个来源提交与新鲜度、接入建议和冲突。先定向 fetch 所需引用，再复跑；本地与 tracking ref 不同、同 ID 多个主张、归档/活动冲突、缺失目标均需核对。未被列出的远端工作不会被自动发现，不把只读预览称为迁移完成。
+
+普通 Change 已在基线进入实现或关闭时，先确认并准备独立工作分支；不能把执行状态留在集中规划分支。仅在工作分支出现的完成归档须连同交付集成后再作为集中历史，不能只复制归档就声称交付已集成。
+
+在已配置当前协议的隔离候选中核对 skill/校验器。从预览的固定提交与目录引入已知 Change 的原始记录，保留工作分支；不要为入口生成另一套状态，也不要复制执行进度。新规划按主 skill 的 create 命令建立。现有活动分支合码时先核对 live/archive 是否并存及登记提交祖先关系，不机械删除其他活动记录。执行本机 Setup、实际 hook 与目标读取验证后，将候选发布到协作分支；主工作区只在干净且分支用途已核对时切换。保护分支仅按用户主动要求发布，不作为接入前置。
 
 ## 可选绘图 skill
 
@@ -58,6 +88,8 @@ Git clone 传递接入文件和校验脚本，不传递本机 Git 配置；新�
 - 只检查暂存区中本次新增、修改的 `docs/project/workflow.json`、`docs/project/changes/<id>/change.json` 和 `docs/project/archive/<date>-<id>/change.json`。重命名按目标文件检查，删除和未改动的历史文件不检查。
 - 共享主 skill 的 `scripts/state-schema.mjs`，按主 skill 的 TypeScript 声明检查必需字段、类型、枚举、非空文本、带时区的有效时间、任务编号、未知字段及数组重复项，包含 `dependsOn`。
 - 只保留明确的字段关联：`blocked` 任务需要 `reason`，`cancelled` Change 需要 `cancellation`。
+- workflow 只接受 schemaVersion 2，必须配置有效协作分支，不能与保护分支角色重合。旧版配置由命令、hook 与 Setup 明确拒绝，先补齐当前配置；不保留旧版执行或升级读取路径。Change 记录的 schemaVersion 仍为 1，与 workflow 版本独立。
+- 原型跨文件检查仅针对当前分支所属 live Change；继承副本仍检查本次暂存的完整 JSON 结构，其远端原型不要求在本地存在。hook 不 fetch、不跟随远端入口。
 - 读取 Git 本次实际提交的暂存区版本，保留 `GIT_INDEX_FILE`。失败输出文件、字段和原因并阻止提交；不修改文件或暂存区。
 - 确认是否有效、依赖是否满足、任务是否真正完成以及合码条件由 Agent 按主工作流判断。hook 不解析 Markdown，也不增加开发、归档或合码门禁。
 

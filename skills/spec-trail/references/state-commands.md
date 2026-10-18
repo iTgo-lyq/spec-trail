@@ -1,12 +1,12 @@
 # Change 状态命令
 
-常规状态修改使用 `node .agents/skills/spec-trail/scripts/change.mjs <命令> --change <id>`，在 Change 主分支运行。Node.js 20+，仅使用内置模块，无需安装依赖。`--repo <仓库>` 可显式指定工作区；`--dry-run` 只输出拟写状态，不修改文档。`show` 按 ID 读取活动或归档 Change 的元数据，查找范围遵循[主 skill](../SKILL.md#入口与通用约束)。
+常规状态修改使用 `node .agents/skills/spec-trail/scripts/change.mjs <命令> --change <id>`，规划在协作分支运行，移交后在登记的工作分支运行。Node.js 20+，仅使用内置模块，无需安装依赖。`--repo <仓库>` 可显式指定工作区；`--dry-run` 只输出拟写状态，不修改文档。`show` 按 ID 读取活动或归档 Change 的元数据，查找范围遵循[主 skill](../SKILL.md#入口与通用约束)。
 
 脚本写入现有 `change.json`，不会替用户确认、运行测试、验证 Markdown 正文含义或自动提交/推送。摘要和来源由 Agent 根据真实证据填写；调用成功仅代表本地状态更新。任务默认按编号数值递增串行；Plan 可用显式执行顺序表覆盖，存在但无效时拒绝推进。顺序解析和前置链校验由共享 `scripts/task-order.mjs` 执行，正文任务定义和实际交付仍由 Agent 核对。依赖读取本地及 `origin` 跟踪分支，调用前按主 skill fetch；缺少已推送关闭记录时拒绝执行；若因 squash 等原因无法从祖先关系证明交付已集成，先核对所需代码/验证并写入 Execution，再用 `--availability-note '具体集成依据'` 继续。execute 及 xlarge 的 verify/accept/archive 接受该参数，输出前置主分支与当前 HEAD 的提交身份和依据，不把人工核对冒充祖先证明。
 
 | 命令 | 参数与语义 |
 | --- | --- |
-| `create` | `--title --size`；可选 `--depends-on id,id`、`--parent id`、`--children id,id`。在当前非守护分支建立 requirement 状态，不生成正文、不创建或切换 Git 分支、不覆盖已有目录。 |
+| `create` | `--title --size`；可选 `--depends-on id,id`、`--parent id`、`--children id,id`。在配置的协作分支建立 requirement 状态，不生成正文、不创建或切换 Git 分支、不覆盖已有目录。 |
 | `retitle` | `--title`；仅修改活动 Change 的展示标题，保留 id、阶段、任务与确认；需在所属分支运行。 |
 | `confirm` | `--phase requirement/technical/plan/merge --summary --source`。summary 写阶段内容，优先 20–40 字符，最多 60 个 Unicode 码点、单句且不换行；source 写实际确认依据。需求确认进入 technical，large 技术确认进入 plan；执行另用 execute。medium/xlarge 技术与计划同次获确认时连续记录两次。merge 可附 `--source-commit --target-commit --base-commit`。 |
 | `clarification-ask` | `--round --text --recommendation`；可选 `--question Qn`，默认下一个编号，只能递增。保存实际问过的问题，round 为从 1 开始的正整数，同轮问题用同一值。 |
@@ -35,6 +35,8 @@
 node .agents/skills/spec-trail/scripts/change.mjs create --change example --title '具体目标' --size small
 # 按实际需求编辑 requirement.md，然后登记任务。
 node .agents/skills/spec-trail/scripts/change.mjs task-add --change example --title '实现目标行为'
+# 推送规划后移交；在目标 worktree 的执行会话继续，见 workspaces.md。
+node .agents/skills/spec-trail/scripts/workspace.mjs handoff --change example
 node .agents/skills/spec-trail/scripts/change.mjs execute --change example
 node .agents/skills/spec-trail/scripts/change.mjs task-start --change example --task T1
 # 完成实现与验证后，填真实结果；提交、推送与 done 一起完成。

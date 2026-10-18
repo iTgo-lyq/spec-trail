@@ -67,10 +67,19 @@ async function main() {
       return null;
     }
   };
-  const config = readState(":docs/project/workflow.json")?.prototype;
+  const workflow = readState(":docs/project/workflow.json");
+  const config = workflow?.prototype;
+  let branch;
+  try {
+    branch = git(["symbolic-ref", "--quiet", "--short", "HEAD"]).trim();
+  } catch {}
   for (const [path] of indexed) {
     if (!/^docs\/project\/changes\/[^/]+\/change\.json$/.test(path)) continue;
     const value = readState(`:${path}`);
+    // Inherited entries retain old preview metadata. Their authoritative files
+    // live on another branch, so local cross-file checks cannot validate them.
+    if (workflow && branch && value?.branch !== branch)
+      continue;
     if (!Array.isArray(value?.previews) || !value.previews.length) continue;
     const changed = paths.includes(path);
     const previous = readState(`HEAD:${path}`)?.previews;

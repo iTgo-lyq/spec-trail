@@ -9,7 +9,7 @@ description: SpecTrail 原型协作：选择 OpenFolio 或自建托管、Git 兜
 
 ## 接入与设计
 
-读取 AGENTS、设计规范、现有组件及 `workflow.json.prototype`，基线为已推送 main。未选择时按需询问；disabled 不重复建议；pending 修复接入；enabled 复用已有包。
+读取 AGENTS、设计规范、现有组件及 `workflow.json.prototype`，当前基线为项目实际配置并已推送的协作分支，develop 只是推荐名称。OpenFolio 直接使用接入时指定的协作分支读取原型策略与清单，不依赖默认分支或保护分支。未选择时按需询问；disabled 不重复建议；pending 修复接入；enabled 复用已有包。
 
 原型已启用时，按 UI 影响范围处理，不以 Change 规模代替判断：
 
@@ -44,7 +44,7 @@ setup 不安装框架，不覆盖已有文件；采用现有工程时提供 pack
 
 ## 当前清单
 
-`<packagePath>/prototype.json` 是 main 总览唯一清单，Git 保存源码及描述，dist 默认忽略。格式由 [共享契约](./scripts/contract.mjs) 校验：
+`<packagePath>/prototype.json` 是协作分支当前总览唯一清单，Git 保存源码及描述，dist 默认忽略。格式由 [共享契约](./scripts/contract.mjs) 校验：
 
 ```json
 {
@@ -55,7 +55,7 @@ setup 不安装框架，不覆盖已有文件；采用现有工程时提供 pack
 }
 ```
 
-id 稳定且项目内唯一；名称可改。component 在 devices 和 1–4096 CSS px 的 viewport 中二选一。artifact 缺失表示未交付。删除 main 清单项即从总览移除，不清除旧发布或 Change 历史；源码或主题变化不强制重发所有参考原型。
+id 稳定且项目内唯一；名称可改。component 在 devices 和 1–4096 CSS px 的 viewport 中二选一。artifact 缺失表示未交付。删除协作分支清单项即从总览移除，不清除旧发布或 Change 历史；源码或主题变化不强制重发所有参考原型。
 
 ## 宿主发布
 
@@ -74,7 +74,7 @@ node .agents/skills/spec-trail/prototype/scripts/publish.mjs register --request 
 
 成功结果包含 schemaVersion:1、status:published、原 requestId/sourceCommit/digest、固定 version 及 entries；每项是 id/url，可提供 thumbnails 数组（device/url；固定 PNG/WebP）。失败返回 status:failed、requestId、code、message、retryable。宿主先完整上传再原子发布，重复请求返回同版本，绝不覆盖旧版本字节；失败不替换引用，也不自动提交 dist。
 
-登记命令校验结果后一起更新当前 artifact 与可选 Change previews；无 --change 可只更新当前清单。多文件更新中断后运行 `publish.mjs recover`，遇到新用户编辑停止恢复，不覆盖。若进程异常退出遗留 Git common-dir 下的 `spec-trail-state.lock`，命令不会抢占锁：先读取其中的 owner.json（PID、主机、工作区、开始时间），核实对应主机上的进程已结束、仓库无其他状态操作并检查工作区及事务日志，再清理已确认失效的锁目录，重新运行 recover。没有 owner.json 的共享锁也必须先核实持锁进程；无法确认时保留锁与日志。不要删除事务日志来绕过恢复。随后提交推送；引用进入 main 才更新总览。Change 保留自己的显示信息、视口、固定地址和构建源码 commit，不跟随当前清单变化。预览引用使用无凭据、无 query 的 HTTP/HTTPS，可用 hash 路由；上传地址只保存在 workflow，不放进预览引用或成功日志。
+登记命令校验结果后一起更新当前 artifact 与可选 Change previews；无 --change 可只更新当前清单。多文件更新中断后运行 `publish.mjs recover`，遇到新用户编辑停止恢复，不覆盖。若进程异常退出遗留 Git common-dir 下的 `spec-trail-state.lock`，命令不会抢占锁：先读取其中的 owner.json（PID、主机、工作区、开始时间），核实对应主机上的进程已结束、仓库无其他状态操作并检查工作区及事务日志，再清理已确认失效的锁目录，重新运行 recover。没有 owner.json 的共享锁也必须先核实持锁进程；无法确认时保留锁与日志。不要删除事务日志来绕过恢复。随后提交推送；引用进入协作分支后更新预发布总览，不必等待保护分支发布。Change 保留自己的显示信息、视口、固定地址和构建源码 commit，不跟随当前清单变化。预览引用使用无凭据、无 query 的 HTTP/HTTPS，可用 hash 路由；上传地址只保存在 workflow，不放进预览引用或成功日志。
 
 宿主负责保留被历史引用的版本。Git 标签仅保留记录和源码，不能代替外部存储的保留承诺。
 
