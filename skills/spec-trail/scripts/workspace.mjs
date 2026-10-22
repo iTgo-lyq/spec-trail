@@ -99,10 +99,24 @@ function ready(repo, catalog, record, note, refresh) {
   assert(
     state.status === "active" &&
       (state.size === "xlarge"
-        ? ["plan", "execution", "close"].includes(state.stage)
+        ? ["technical", "plan", "execution", "close"].includes(state.stage)
         : ["requirement", "technical", "plan"].includes(state.stage)),
-    "Handoff requires ordinary planning or an xlarge parent ready to close",
+    "Handoff requires planning or an xlarge parent ready to close",
   );
+  if (state.size !== "small" && !state.confirmations.plan) {
+    assert(state.waitingFor?.kind !== "pause", "Resolve the pause before handoff");
+    for (const name of ["requirement", "technical"])
+      textAt(repo, record.commit, `${record.directory}/${name}.md`);
+    for (const phase of state.size === "large"
+      ? ["requirement", "technical"]
+      : ["requirement"])
+      assert(state.confirmations[phase], `Missing ${phase} confirmation`);
+    assert(
+      state.stage === (state.size === "large" ? "plan" : "technical"),
+      "Prepare the technical proposal before Plan handoff",
+    );
+    return;
+  }
   assert(
     !state.waitingFor,
     "Resolve the actual waiting condition before handoff",
@@ -237,7 +251,7 @@ function handoff(repo, id, options) {
   assert(
     validBranchName(branch) &&
       branch !== catalog.branch &&
-      !catalog.config.protectedBranches.includes(branch),
+      catalog.config.releaseBranch !== branch,
     "Choose an independent, non-protected work branch",
   );
   if (record.branch !== catalog.branch) {
@@ -493,7 +507,7 @@ function prepare(repo, id, options) {
     "This Change is not writable; inspect locate diagnostics",
   );
   assert(
-    result.branch !== repo.config.collaborationBranch,
+    result.branch !== repo.config.integrationBranch,
     "Use handoff for a planning Change",
   );
   const path = resolve(options.path ?? defaultPath(repo, id));

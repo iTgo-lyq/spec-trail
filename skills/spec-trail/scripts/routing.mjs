@@ -15,12 +15,14 @@ export const validBranchName = (value) =>
 export function workflowRoutingIssues(value) {
   const errors = [];
   if (!value || typeof value !== "object" || Array.isArray(value)) return errors;
-  if (value.schemaVersion !== 2)
-    errors.push("/schemaVersion: only workflow version 2 is supported; complete SpecTrail Setup");
-  if (!validBranchName(value.collaborationBranch))
-    errors.push("/collaborationBranch: a valid local branch name is required");
-  if (value.protectedBranches?.includes?.(value.collaborationBranch))
-    errors.push("/collaborationBranch: collaboration and protected branch roles must be distinct");
+  if (value.schemaVersion !== 3)
+    errors.push("/schemaVersion: only workflow version 3 is supported; complete SpecTrail Setup");
+  if (!validBranchName(value.integrationBranch))
+    errors.push("/integrationBranch: a valid local branch name is required");
+  if (!validBranchName(value.releaseBranch))
+    errors.push("/releaseBranch: a valid local branch name is required");
+  if (value.releaseBranch === value.integrationBranch)
+    errors.push("/integrationBranch: integration and release branches must be distinct");
   return errors;
 }
 
@@ -70,14 +72,14 @@ export function closedRecord(state, directory) {
 /**
  * Read only identity/ownership from live entries; their other fields may be stale.
  * @param {{path: string, state: any, error?: string}[]} entries
- * @param {string} collaborationBranch
- * @param {string[]} protectedBranches
+ * @param {string} integrationBranch
+ * @param {string} [releaseBranch]
  * @returns {ChangeRoute[]}
  */
 export function routeCatalog(
   entries,
-  collaborationBranch,
-  protectedBranches = [],
+  integrationBranch,
+  releaseBranch,
 ) {
   const groups = new Map();
   for (const entry of entries) {
@@ -106,22 +108,22 @@ export function routeCatalog(
       /** @type {ChangeRoute['kind']} */
       const kind = entry.archived
         ? "archive"
-        : state?.branch === collaborationBranch
+        : state?.branch === integrationBranch
           ? "planning"
           : "target";
       if (entry.archived && !closedRecord(state, entry.directory))
         errors.push(
           "The collaboration archive does not contain a valid completed record",
         );
-      if (!entry.archived && protectedBranches.includes(state?.branch))
-        errors.push("A live Change cannot be owned by a protected branch");
+      if (!entry.archived && releaseBranch && releaseBranch === state?.branch)
+        errors.push("A live Change cannot be owned by the release branch");
       return {
         id,
         entryPath: entry.path,
         branch: errors.length
           ? null
           : kind === "archive"
-            ? collaborationBranch
+            ? integrationBranch
             : state.branch,
         kind: errors.length ? "invalid" : kind,
         errors,

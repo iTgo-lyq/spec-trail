@@ -285,7 +285,7 @@ export function register(root, { request, result, change, gitEntry }) {
     const { workflow, path, manifest } = configuration(root),
       branch = git(root, ["symbolic-ref", "--short", "HEAD"]);
     fail(
-      !workflow.protectedBranches.includes(branch),
+      workflow.releaseBranch !== branch,
       "Register on a working branch, not a protected branch",
     );
     // A cancelled record freezes its branch, even for a current-only publication.

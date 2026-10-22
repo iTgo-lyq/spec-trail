@@ -74,7 +74,7 @@ try {
     }
   }
   const workflow = { path: workflowPath, status: "not_ready" };
-  let collaboration;
+  let integration;
   try {
     const value = JSON.parse(readFileSync(join(root, workflowPath), "utf8"));
     if (schema) {
@@ -82,8 +82,8 @@ try {
       issues.push(...errors.map((error) => `${workflowPath}: ${error}`));
       if (!errors.length) {
         const refs = [
-          `refs/heads/${value.collaborationBranch}`,
-          `refs/remotes/origin/${value.collaborationBranch}`,
+          `refs/heads/${value.integrationBranch}`,
+          `refs/remotes/origin/${value.integrationBranch}`,
         ];
         const available = refs.filter((ref) => {
           try {
@@ -93,16 +93,16 @@ try {
             return false;
           }
         });
-        collaboration = {
-          branch: value.collaborationBranch,
-          defaultMergeTarget: value.collaborationBranch,
-          protectedBranches: value.protectedBranches,
+        integration = {
+          branch: value.integrationBranch,
+          defaultMergeTarget: value.integrationBranch,
+          releaseBranch: value.releaseBranch,
           knownRefs: available,
           remotePermissions: "unverified",
         };
         if (!available.length)
           issues.push(
-            `${workflowPath}: prepare collaboration branch ${value.collaborationBranch} before starting Changes`,
+            `${workflowPath}: prepare integration branch ${value.integrationBranch} before starting Changes`,
           );
         else workflow.status = "ready";
       }
@@ -145,7 +145,7 @@ try {
         readiness: issues.length ? "not_ready" : "ready",
         resources,
         workflow,
-        collaboration,
+        integration,
         hook,
         command,
         issues,

@@ -1,3 +1,4 @@
+import { trailingFields } from './pr-markers.mjs';
 import { changeLocation, closedRecord } from './routing.mjs';
 import { validateChange } from './state-schema.mjs';
 
@@ -10,19 +11,8 @@ const format = '%H%x00%P%x00%cI%x00%s%x00%B%x00';
 /** @typedef {{version:number, tip:string|null, complete:boolean, records:Record<string,IntegrationResult>, issues:string[], message?:string}} IntegrationIndex */
 /** @typedef {(args:string[]) => Promise<Buffer|string>} GitRun */
 
-// Only a trailing paragraph of trailers is metadata. Mentions in prose/titles
-// never associate a Change, and continuation lines belong to the prior value.
 export function changeTrailers(message) {
-  const paragraphs = message.trimEnd().split(/\r?\n\s*\r?\n/);
-  if (paragraphs.length < 2) return [];
-  const fields = [];
-  for (const line of paragraphs.at(-1).split(/\r?\n/)) {
-    if (/^[ \t]/.test(line) && fields.length) { fields.at(-1).value += '\n' + line.trim(); continue; }
-    const match = /^([A-Za-z0-9_-]+):[ \t]*(.*)$/.exec(line);
-    if (!match) return [];
-    fields.push({key:match[1], value:match[2].trim()});
-  }
-  return fields.filter(field => field.key === 'SpecTrail-Change').map(field => field.value);
+  return trailingFields(message).filter(field => field.key === 'SpecTrail-Change').map(field => field.value);
 }
 
 function commits(output) {
@@ -121,13 +111,13 @@ export async function scanIntegrations(run, tip) {
     }
     for (const [id, list] of groups) {
       const result = list.length > 1
-        ? {status: /** @type {const} */('invalid'), message:'协作分支主链中存在重复的 Change 合入标记。', candidates:list.map(meta => meta.commit)}
+        ? {status: /** @type {const} */('invalid'), message:'集成分支主链中存在重复的 Change 合入标记。', candidates:list.map(meta => meta.commit)}
         : await validate(list[0], id);
       // IDs may be valid object prototype names (e.g. constructor).
       Object.defineProperty(index.records,id,{value:result,enumerable:true,writable:true,configurable:true});
     }
     index.complete = true;
-  } catch { index.message = '协作分支历史读取未完成，请获取完整历史后重试。'; }
+  } catch { index.message = '集成分支历史读取未完成，请获取完整历史后重试。'; }
   return index;
 }
 

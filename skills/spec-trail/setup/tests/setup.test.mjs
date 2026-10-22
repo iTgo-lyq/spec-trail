@@ -31,11 +31,11 @@ const resourcePaths = [
 const checkCommand =
   'node "$(git rev-parse --show-toplevel)/.agents/skills/spec-trail/setup/scripts/pre-commit.js"';
 const validWorkflow = {
-  schemaVersion: 2,
-  collaborationBranch: "develop",
-  protectedBranches: ["main"],
+  schemaVersion: 3,
+  integrationBranch: "develop",
+  releaseBranch: "main",
 };
-const invalidWorkflow = { schemaVersion: 1, protectedBranches: [] };
+const invalidWorkflow = { schemaVersion: 1, releaseBranch: [] };
 const at = "2024-02-29T12:30:00.125+08:00";
 const validChange = {
   schemaVersion: 1,
@@ -224,12 +224,12 @@ test("business-owned hook validates clone, worktree and partial commits without 
   s.write(cloned, "docs/project/workflow.json", validWorkflow);
   assert.match(
     s.git(cloned, ["commit", "-m", "Reject invalid staged configuration"], 1),
-    /\/protectedBranches/,
+    /\/releaseBranch/,
   );
   assert.equal(s.git(cloned, ["rev-parse", "HEAD"]).trim(), head);
   s.write(cloned, "docs/project/workflow.json", {
     ...validWorkflow,
-    protectedBranches: ["main", "release"],
+    releaseBranch: "release",
   });
   s.git(cloned, ["add", "docs/project/workflow.json"]);
   s.write(cloned, "docs/project/workflow.json", invalidWorkflow);
@@ -240,8 +240,8 @@ test("business-owned hook validates clone, worktree and partial commits without 
   ]);
   assert.deepEqual(
     JSON.parse(s.git(cloned, ["show", "HEAD:docs/project/workflow.json"]))
-      .protectedBranches,
-    ["main", "release"],
+      .releaseBranch,
+    "release",
   );
   s.git(cloned, ["add", "docs/project/workflow.json"]);
   s.write(cloned, "note.txt", "Updated note\n");
@@ -275,12 +275,12 @@ test("field rules reject invalid workflow and Change state with precise paths", 
   for (const [value, field] of [
     [null, "/"],
     [{ ...validWorkflow, schemaVersion: "1" }, "/schemaVersion"],
-    [invalidWorkflow, "/protectedBranches"],
+    [invalidWorkflow, "/releaseBranch"],
     [
-      { ...validWorkflow, protectedBranches: ["main", "main"] },
-      "/protectedBranches",
+      { ...validWorkflow, releaseBranch: ["main", "main"] },
+      "/releaseBranch",
     ],
-    [{ ...validWorkflow, protectedBranches: ["*"] }, "/protectedBranches/0"],
+    [{ ...validWorkflow, releaseBranch: "*" }, "/releaseBranch"],
     ["{ invalid JSON", "/"],
   ]) {
     s.write(repo, "docs/project/workflow.json", value);
@@ -446,7 +446,7 @@ test("setup is read-only before and after native hook integration", (t) => {
   s.git(repo, ["add", "docs/project/workflow.json"]);
   assert.match(
     s.git(repo, ["commit", "-m", "Native hook rejects invalid state"], 1),
-    /\/protectedBranches/,
+    /\/releaseBranch/,
   );
 });
 
@@ -490,7 +490,7 @@ test("setup reports missing resources and invalid configuration without repairin
   const invalid = s.check(repo, 1);
   assert.equal(invalid.workflow.status, "not_ready");
   assert.ok(
-    invalid.issues.some((issue) => issue.includes("/protectedBranches")),
+    invalid.issues.some((issue) => issue.includes("/releaseBranch")),
   );
   assert.deepEqual(s.snapshot(repo), invalidBefore);
   s.write(repo, "docs/project/workflow.json", validWorkflow);
@@ -605,29 +605,29 @@ test("delegated hook integration survives regeneration and remains unverified by
   s.git(repo, ["add", "docs/project/workflow.json"]);
   const rejected = s.git(repo, ["commit", "-m", "Invalid delegated hook"], 1);
   assert.match(rejected, /existing-check/);
-  assert.match(rejected, /\/protectedBranches/);
+  assert.match(rejected, /\/releaseBranch/);
   assert.doesNotMatch(rejected, /after-validation/);
   assert.equal(s.git(repo, ["rev-parse", "HEAD"]).trim(), head);
 });
 
-test("setup requires a configured collaboration branch and reports permissions without modifying refs", (t) => {
+test("setup requires a configured integration branch and reports permissions without modifying refs", (t) => {
   const s = sandbox(t),
-    repo = s.makeRepo("collaboration setup");
+    repo = s.makeRepo("integration setup");
   s.provision(repo);
   const before = s.snapshot(repo),
     ready = s.check(repo);
-  assert.equal(ready.collaboration.branch, "develop");
-  assert.equal(ready.collaboration.defaultMergeTarget, "develop");
-  assert.equal(ready.collaboration.remotePermissions, "unverified");
+  assert.equal(ready.integration.branch, "develop");
+  assert.equal(ready.integration.defaultMergeTarget, "develop");
+  assert.equal(ready.integration.remotePermissions, "unverified");
   assert.deepEqual(s.snapshot(repo), before);
   s.git(repo, ["branch", "-D", "develop"]);
   assert.match(
     s.check(repo, 1).issues.join("\n"),
-    /prepare collaboration branch develop/,
+    /prepare integration branch develop/,
   );
   s.write(repo, "docs/project/workflow.json", {
     schemaVersion: 1,
-    protectedBranches: ["main"],
+    releaseBranch: "main",
   });
   assert.match(s.check(repo, 1).issues.join("\n"), /complete SpecTrail Setup/);
 });

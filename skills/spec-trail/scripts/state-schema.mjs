@@ -67,6 +67,27 @@ function list(itemRule, nonEmpty = false) {
   };
 }
 
+const types = list((value, path, errors) => {
+  if (
+    typeof value !== "string" ||
+    !value.length ||
+    value.trim() !== value ||
+    /[\r\n\u2028\u2029]/.test(value)
+  )
+    report(errors, path, "must be a trimmed, non-empty single-line label");
+});
+const urgency = oneOf("urgent", "high", "normal", "low");
+export const validateTypes = (value) => {
+  const errors = [];
+  types(value, "/types", errors);
+  return errors;
+};
+export const validateUrgency = (value) => {
+  const errors = [];
+  urgency(value, "/urgency", errors);
+  return errors;
+};
+
 function timestamp(value, path, errors) {
   const parts =
     typeof value === "string" &&
@@ -198,13 +219,13 @@ const previewsRule = (value, path, errors) =>
   errors.push(...prototypeContract.validatePreviews(value, path));
 const workflow = object(
   {
-    schemaVersion: oneOf(2),
-    collaborationBranch: branch,
+    schemaVersion: oneOf(3),
+    integrationBranch: branch,
     prototype: prototypeRule,
     openfolioUrl: () => {}, // Validated together with the hosting choice below.
-    protectedBranches: list(branch, true),
+    releaseBranch: branch,
   },
-  ["schemaVersion", "collaborationBranch", "protectedBranches"],
+  ["schemaVersion", "integrationBranch", "releaseBranch"],
 );
 
 const changeFields = object(
@@ -213,6 +234,9 @@ const changeFields = object(
     id,
     title: text,
     size: oneOf("small", "medium", "large", "xlarge"),
+    types,
+    urgency,
+    deliveryOverride: oneOf("releaseMerged"),
     status: oneOf("active", "completed", "cancelled"),
     stage: oneOf("requirement", "technical", "plan", "execution", "close"),
     branch,

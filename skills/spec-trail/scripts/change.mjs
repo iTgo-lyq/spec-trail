@@ -16,9 +16,15 @@ import {
 import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual, parseArgs } from "node:util";
-import { validateChange, validateWorkflow } from "./state-schema.mjs";
+import {
+  validateChange,
+  validateWorkflow,
+  validateTypes,
+  validateUrgency,
+} from "./state-schema.mjs";
 import { entryPath } from "../prototype/scripts/contract.mjs";
 import { parseTaskOrder, unfinishedPredecessors } from "./task-order.mjs";
+import { integrationFor, scanIntegrations } from "./integration-records.mjs";
 import { closedRecord } from "./routing.mjs";
 import {
   repository,
@@ -35,7 +41,10 @@ const commands = {
     "children",
     "follow-up-of",
     "group-title",
+    "types",
+    "urgency",
   ],
+  labels: ["types", "urgency"],
   "follow-up": ["target", "group-title"],
   show: [],
   retitle: ["title"],
@@ -75,7 +84,7 @@ const json = (value) => JSON.stringify(value, null, 2) + "\n";
 const read = (path) => JSON.parse(readFileSync(path, "utf8"));
 const list = (value) => (value ? value.split(",") : []);
 
-function main() {
+async function main() {
   const [command, ...args] = process.argv.slice(2);
   if (!command || command === "--help" || command === "help") {
     console.log(
@@ -173,7 +182,7 @@ function main() {
   const repo = repository(root);
   const catalog = collaborationCatalog(repo, {
     refresh: command !== "show" && !opts["dry-run"],
-    local: repo.branch === repo.config.collaborationBranch,
+    local: repo.branch === repo.config.integrationBranch,
   });
   const route = catalog?.routes.find((entry) => entry.id === id);
   const matches = records().filter((r) => r.state.id === id);
@@ -185,7 +194,7 @@ function main() {
     if (
       local &&
       local.length === 1 &&
-      (route || repo.branch === repo.config.collaborationBranch)
+      (route || repo.branch === repo.config.integrationBranch)
     ) {
       console.log(
         json({
@@ -226,7 +235,7 @@ function main() {
     const config = read(safe("docs/project/workflow.json"));
     assert(!validateWorkflow(config).length, "Invalid workflow.json");
     assert(
-      !config.protectedBranches.includes(branch),
+      config.releaseBranch !== branch,
       "Use the Change branch, not a protected branch",
     );
     const all = records();
@@ -243,12 +252,12 @@ function main() {
         );
       } else
         assert(
-          branch === config.collaborationBranch,
+          branch === config.integrationBranch,
           "Register this Change on the collaboration branch before writing it",
         );
       if (command === "create") {
         assert(
-          branch === config.collaborationBranch,
+          branch === config.integrationBranch,
           "Create planning Changes on the collaboration branch",
         );
         assert(
@@ -258,7 +267,7 @@ function main() {
       }
     }
     assert(
-      branch === config.collaborationBranch ||
+      branch === config.integrationBranch ||
         !all.some(
           (r) =>
             !r.archived &&
@@ -269,6 +278,7 @@ function main() {
     );
     const found = all.filter((r) => r.state.id === id);
     assert(found.length <= 1, "Duplicate Change id");
+    const restoring = command === "rework" && found[0]?.archived;
     if (command === "create")
       assert(
         !found.length && !existsSync(liveDir),
@@ -276,13 +286,13 @@ function main() {
       );
     else
       assert(
-        found.length === 1 && !found[0].archived,
+        found.length === 1 && (!found[0].archived || restoring),
         "Change not found or archived; archive is read-only",
       );
     const file =
       command === "create" ? join(liveDir, "change.json") : found[0].file;
     assert(
-      command === "create" || file === join(liveDir, "change.json"),
+      command === "create" || restoring || file === join(liveDir, "change.json"),
       "Change directory does not match its id",
     );
     const original = command === "create" ? null : readFileSync(file, "utf8");
@@ -317,7 +327,18 @@ function main() {
       state.branch === branch,
       `Switch to the Change branch ${state.branch}`,
     );
-    assert(state.status === "active", "Only active Changes can be modified");
+    if (restoring) {
+      assert(!existsSync(liveDir), "The active Change directory already exists");
+      assert(closedRecord(state, relative(root, dirname(file))), "Only valid completed archives can be restored");
+      const index = await scanIntegrations(async args => repo.git(args), catalog.commit);
+      const integration = integrationFor(index, id);
+      assert(index.complete && integration.status === "missing", "Integrated or unverifiable archives are read-only");
+      let included = false;
+      try { git(["merge-base", "--is-ancestor", "HEAD", catalog.commit]); included = true; }
+      catch (error) { if (error.status !== 1) throw error; }
+      assert(!included, "Source is already integrated without a valid Change merge");
+    } else assert(state.status === "active", "Only active Changes can be modified");
+    const recordDir = restoring ? dirname(file) : liveDir;
     const now = new Date().toISOString();
     const requireStage = (...allowed) =>
       assert(
@@ -334,7 +355,7 @@ function main() {
         ? ["requirement"]
         : ["requirement", "technical", "plan"])
         assert(
-          existsSync(safe(`${relative(root, liveDir)}/${name}.md`)),
+          existsSync(safe(`${relative(root, recordDir)}/${name}.md`)),
           `Missing ${name}.md`,
         );
     };
@@ -344,7 +365,7 @@ function main() {
           assert(state.confirmations[phase], `Missing ${phase} confirmation`);
     };
     const requireTaskOrder = () => {
-      const plan = safe(`${relative(root, liveDir)}/plan.md`);
+      const plan = safe(`${relative(root, recordDir)}/plan.md`);
       const order = parseTaskOrder(
         state,
         existsSync(plan) ? readFileSync(plan, "utf8") : undefined,
@@ -369,7 +390,7 @@ function main() {
     };
     const uniqueActive = () =>
       assert(
-        (branch === config.collaborationBranch && state.size === "xlarge") ||
+        (branch === config.integrationBranch && state.size === "xlarge") ||
           !all.some(
             (r) =>
               !r.archived &&
@@ -651,6 +672,32 @@ function main() {
         state.followUpTitle = title;
       }
     };
+    const setLabels = () => {
+      if (opts.types !== undefined) {
+        const input = JSON.parse(opts.types);
+        assert(
+          Array.isArray(input) && input.every((item) => typeof item === "string"),
+          "--types must be a JSON array of strings",
+        );
+        // Check line breaks before trimming, so an invalid label is not repaired.
+        assert(
+          input.every((item) => !/[\r\n\u2028\u2029]/.test(item)),
+          "--types labels must be single-line",
+        );
+        const types = [...new Set(input.map((item) => item.trim()))];
+        assert(!validateTypes(types).length, validateTypes(types).join("; "));
+        if (types.length) state.types = types;
+        else delete state.types;
+      }
+      if (opts.urgency !== undefined) {
+        assert(
+          !validateUrgency(opts.urgency).length,
+          validateUrgency(opts.urgency).join("; "),
+        );
+        if (opts.urgency === "normal") delete state.urgency;
+        else state.urgency = opts.urgency;
+      }
+    };
     switch (command) {
       case "create":
         assert(
@@ -658,6 +705,14 @@ function main() {
           "--group-title requires --follow-up-of",
         );
         if (state.followUpOf) setFollowUp(state.followUpOf);
+        setLabels();
+        break;
+      case "labels":
+        assert(
+          opts.types !== undefined || opts.urgency !== undefined,
+          "labels requires --types or --urgency",
+        );
+        setLabels();
         break;
       case "follow-up": {
         const target = need("target");
@@ -941,6 +996,15 @@ function main() {
           approach: need("approach"),
         };
         state.stage = stage;
+        if (restoring) {
+          state.status = "active";
+          for (const preview of state.previews ?? []) {
+            if (preview.artifact.type !== "git") continue;
+            const prefix = relative(root, dirname(file));
+            assert(preview.artifact.path.startsWith(prefix + "/previews/"), "Invalid archived prototype path");
+            preview.artifact.path = relative(root, liveDir) + preview.artifact.path.slice(prefix.length);
+          }
+        }
         state.closure = {};
         delete state.waitingFor;
         break;
@@ -985,7 +1049,7 @@ function main() {
         recordStep("specs", opts.result);
         break;
       case "archive": {
-        assert(branch !== config.collaborationBranch, "Handoff to an independent closing branch before archiving; this also applies to xlarge parents");
+        assert(branch !== config.integrationBranch, "Handoff to an independent closing branch before archiving; this also applies to xlarge parents");
         requireStage("close");
         unblocked();
         completeTasks();
@@ -1059,7 +1123,7 @@ function main() {
     const errors = validateChange(state);
     assert(!errors.length, errors.join("; "));
     assert(
-      branch !== config.collaborationBranch ||
+      branch !== config.integrationBranch ||
         state.size === "xlarge" ||
         !["execution", "close"].includes(state.stage),
       "Handoff this Change to its own worktree before implementation",
@@ -1081,7 +1145,7 @@ function main() {
     const result = {
       command,
       dryRun: opts["dry-run"],
-      path: relative(root, archiveDir ? join(archiveDir, "change.json") : file),
+      path: relative(root, archiveDir ? join(archiveDir, "change.json") : restoring ? join(liveDir, "change.json") : file),
       state,
       ...(availability.length ? { availability } : {}),
     };
@@ -1158,6 +1222,11 @@ function main() {
           renameSync(archiveDir, liveDir);
           throw error;
         }
+      } else if (restoring) {
+        mkdirSync(dirname(liveDir), { recursive: true });
+        renameSync(dirname(file), liveDir);
+        try { renameSync(join(liveDir, relative(dirname(file), temporary)), join(liveDir, "change.json")); }
+        catch (error) { renameSync(liveDir, dirname(file)); throw error; }
       } else renameSync(temporary, file);
     } catch (error) {
       for (const path of copiedFiles.reverse()) rmSync(path, {force: true});
@@ -1179,7 +1248,7 @@ function main() {
     }
     result.next =
       archiveDir
-        ? `Commit and push the archived source, then run scripts/integration.mjs merge --change ${state.id}; verify delivery before cleanup. Do not create retention tags or edit the archive.`
+        ? `Commit and push the archived source, then run scripts/integration.mjs preflight --change ${state.id}; create/reuse its PR and verify the remote merge before cleanup. Use rework for corrections before integration.`
         : "Review the local diff, commit and push. A local command is not a published workflow fact.";
     console.log(json(result));
   } finally {
@@ -1188,7 +1257,7 @@ function main() {
 }
 
 try {
-  main();
+  await main();
 } catch (error) {
   console.error(`SpecTrail state: ${error.message}`);
   process.exitCode = 1;

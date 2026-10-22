@@ -102,8 +102,8 @@ export function collaborationCatalog(
   repo,
   { refresh = false, local = false } = {},
 ) {
-  const name = repo.config.collaborationBranch;
-  if (repo.config.schemaVersion !== 2 || !validBranchName(name))
+  const name = repo.config.integrationBranch;
+  if (repo.config.schemaVersion !== 3 || !validBranchName(name))
     throw Error("Complete SpecTrail Setup before using collaboration routing");
   if (refresh) fetchBranch(repo, name);
   let ref = `refs/remotes/origin/${name}`,
@@ -119,7 +119,7 @@ export function collaborationCatalog(
   );
   if (
     validateWorkflow(config).length ||
-    config.collaborationBranch !== name
+    config.integrationBranch !== name
   )
     throw Error(
       "The collaboration configuration is invalid or disagrees with this checkout; complete Setup first",
@@ -131,7 +131,7 @@ export function collaborationCatalog(
     commit,
     config,
     entries,
-    routes: routeCatalog(entries, name, config.protectedBranches),
+    routes: routeCatalog(entries, name, config.releaseBranch),
     freshness: ref.startsWith("refs/heads/")
       ? "local-only"
       : refresh

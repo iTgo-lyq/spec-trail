@@ -1,15 +1,14 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { hostname } from 'node:os';
-import { randomUUID } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { repository, collaborationCatalog, recordsAt, revision, remoteBranch, fetchBranch } from './repository.mjs';
 import { closedRecord, validBranchName } from './routing.mjs';
 import { validateChange } from './state-schema.mjs';
-import { integrationFor, inspectIntegration, scanIntegrations, validChangeId } from './integration-records.mjs';
+import { integrationFor, scanIntegrations, validChangeId } from './integration-records.mjs';
 import { entryPath } from '../prototype/scripts/contract.mjs';
 
 const assert = (value, message) => { if (!value) throw Error(message); };
@@ -17,7 +16,7 @@ const at = (path, args) => execFileSync('git', ['-C', path, '--literal-pathspecs
   encoding:'utf8', stdio:['ignore','pipe','pipe'], maxBuffer:32 * 1024 * 1024,
 }).trimEnd();
 const ancestor = (repo, before, after) => {
-  try { repo.git(['merge-base','--is-ancestor',before,after]); return true; } catch { return false; }
+  try { repo.git(['merge-base','--is-ancestor',before,after]); return true; } catch (error) { if (error.status === 1) return false; throw error; }
 };
 
 // Shared namespace with state/workspace commands; keep it until async scans finish.
@@ -52,7 +51,7 @@ function archived(repo, commit, id) {
 }
 
 function sourceBranch(catalog, branch) {
-  assert(validBranchName(branch) && branch !== catalog.branch && !catalog.config.protectedBranches.includes(branch), 'The source cannot be a collaboration or protected branch');
+  assert(validBranchName(branch) && branch !== catalog.branch && catalog.config.releaseBranch !== branch, 'The source cannot be the integration or release branch');
 }
 
 function previewObjects(repo, record, commit, configuration) {
@@ -76,7 +75,7 @@ async function current(repo, id) {
 
 function source(repo, catalog, id) {
   const route = catalog.routes.find(route => route.id === id);
-  assert(route && !route.errors.length && route.kind === 'target', 'Register the archived source branch on the collaboration branch first');
+  assert(route && !route.errors.length && route.kind === 'target', 'Register the archived source branch on the integration branch first');
   const branch = route.branch;
   sourceBranch(catalog, branch);
   const local = revision(repo, `refs/heads/${branch}`);
@@ -95,54 +94,21 @@ function source(repo, catalog, id) {
 export async function preflight(repo, id) {
   assert(validChangeId(id), 'Invalid Change id');
   const {catalog,integration} = await current(repo,id);
-  return {integration,collaboration:catalog.branch,tip:catalog.commit,
-    ...(integration.status === 'found' ? {sourceBranch:archived(repo,integration.commit,id).state.branch} : {source:source(repo,catalog,id)})};
+  const result = {integration,integrationBranch:catalog.branch,tip:catalog.commit,
+    mergeMessage:`Merge Change ${id} into ${catalog.branch}\n\nSpecTrail-Change: ${id}`};
+  if (integration.status === 'found') return {...result,sourceBranch:archived(repo,integration.commit,id).state.branch};
+  const delivery = source(repo,catalog,id);
+  assert(remoteBranch(repo,delivery.branch) === delivery.commit, 'Push the archived source before preparing its PR');
+  assert(!ancestor(repo,delivery.commit,catalog.commit), 'Source was integrated without a valid Change merge; inspect history');
+  return {...result,source:delivery};
 }
 
-/** Push the fixed archived source, then a verified --no-ff merge. Never force push collaboration. */
-export async function integrate(repo, id) {
+/** Verify the platform merge from remote Git history; never push an integration. */
+export async function verify(repo, id) {
   assert(validChangeId(id), 'Invalid Change id');
-  return withRepositoryLock(repo, async () => {
-    let state = await current(repo,id);
-    if (state.integration.status === 'found') return {merged:true,remoteVerified:true,reused:true,integration:state.integration};
-    const delivery = source(repo,state.catalog,id);
-    // A normal push rejects a newer/diverged remote source. Never absorb new work.
-    repo.git(['push','origin',`${delivery.commit}:refs/heads/${delivery.branch}`]);
-    assert(remoteBranch(repo,delivery.branch) === delivery.commit, 'Source advanced during publication; retain it and inspect the new work');
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (attempt) state = await current(repo,id);
-      if (state.integration.status === 'found') return {merged:true,remoteVerified:true,reused:true,integration:state.integration};
-      assert(remoteBranch(repo,delivery.branch) === delivery.commit && (!delivery.local || revision(repo,`refs/heads/${delivery.branch}`) === delivery.commit), 'Source changed after being fixed; integration stopped');
-      const base = state.catalog.commit;
-      assert(!ancestor(repo,delivery.commit,base), 'Source was already integrated without a valid Change merge; do not fabricate history');
-      const primary = worktrees(repo)[0].path;
-      const path = join(dirname(primary), `${primary.split('/').at(-1)}-worktrees`, `.integration-${id}-${randomUUID()}`);
-      mkdirSync(dirname(path), {recursive:true});
-      repo.git(['worktree','add','--detach',path,base]);
-      let merged;
-      try {
-        at(path,['merge','--no-ff',delivery.commit,'-m',`Merge Change ${id} into ${state.catalog.branch}\n\nSpecTrail-Change: ${id}`]);
-        const commit = at(path,['rev-parse','HEAD']);
-        merged = await inspectIntegration(async args => repo.git(args),commit,id);
-        assert(merged.status === 'found', merged.message ?? 'Candidate failed integration validation');
-      } catch (error) { throw Error(`${error.message}\nCandidate retained at ${path}; do not modify the archived delivery.`); }
-      let pushError;
-      try { repo.git(['push','origin',`${merged.commit}:refs/heads/${state.catalog.branch}`]); }
-      catch (error) { pushError = error; }
-      // A failed response is not proof of failed delivery. Query before retrying.
-      let observed;
-      try { observed = await current(repo,id); }
-      catch (error) { throw Error(`${error.message}\nPublication is unknown; candidate retained at ${path}. Retry by Change id.`); }
-      if (observed.integration.status === 'found') {
-        repo.git(['worktree','remove',path]);
-        return {merged:true,remoteVerified:true,reused:observed.integration.commit !== merged.commit,integration:observed.integration};
-      }
-      if (observed.catalog.commit === base || !pushError) throw Error(`Merge was not verified remotely; candidate retained at ${path}`);
-      // Rebuild from the new first parent, never merge a newer tip onto this candidate.
-      repo.git(['worktree','remove',path]);
-    }
-    throw Error('Collaboration kept advancing; source retained. Retry integration by Change id.');
-  });
+  const {integration} = await current(repo,id);
+  if (integration.status !== 'found') throw Error('No verified remote integration; retain the PR and source');
+  return {merged:true,remoteVerified:true,integration};
 }
 
 function dependencies(catalog, branch, id) {
@@ -224,8 +190,8 @@ async function main() {
   }});
   const repo = repository(values.repo), id = values.change;
   const command = positionals[0];
-  assert(positionals.length === 1 && ['preflight','merge','cleanup'].includes(command), 'Usage: integration.mjs preflight|merge|cleanup --change <id> [--repo <checkout>]');
-  const output = command === 'preflight' ? await preflight(repo,id) : command === 'merge' ? await integrate(repo,id) :
+  assert(positionals.length === 1 && ['preflight','verify','cleanup'].includes(command), 'Usage: integration.mjs preflight|verify|cleanup --change <id> [--repo <checkout>]');
+  const output = command === 'preflight' ? await preflight(repo,id) : command === 'verify' ? await verify(repo,id) :
     await cleanup(repo,id,{idleWorktree:values['idle-worktree'],verifiedCommit:values['verified-commit']});
   process.stdout.write(JSON.stringify(output,null,2) + '\n');
   if (output.cleanup && Object.values(output.cleanup).some(item => item.status !== 'cleaned')) process.exitCode = 2;

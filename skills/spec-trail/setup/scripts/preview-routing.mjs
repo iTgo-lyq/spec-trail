@@ -15,8 +15,8 @@ try {
   });
   const repo = repository(values.repo);
   const baseline =
-    values.baseline ?? repo.config.collaborationBranch;
-  const collaborationBranch = repo.config.collaborationBranch;
+    values.baseline ?? repo.config.integrationBranch;
+  const integrationBranch = repo.config.integrationBranch;
   const errors = [],
     sources = [],
     proposals = [];
@@ -29,7 +29,7 @@ try {
     .map((field) => field.slice("branch refs/heads/".length));
   const known = new Set(values["work-branch"]);
   for (const branch of knownTrees)
-    if (branch !== baseline && !repo.config.protectedBranches.includes(branch))
+    if (branch !== baseline && repo.config.releaseBranch !== branch)
       known.add(branch);
   const read = (branch) => {
     if (!validBranchName(branch)) throw Error(`Invalid work branch: ${branch}`);
@@ -126,7 +126,7 @@ try {
     if (
       !history &&
       owned.length &&
-      repo.config.protectedBranches.includes(record.sourceBranch)
+      repo.config.releaseBranch === record.sourceBranch
     )
       problems.push("Protected branch cannot own an execution entry");
     if (!history && owned.length && record.archived)
@@ -162,7 +162,7 @@ try {
         ? record.state.branch
         : owned.length
           ? record.sourceBranch
-          : collaborationBranch,
+          : integrationBranch,
       files: record.directory,
     });
   }
@@ -170,7 +170,7 @@ try {
     JSON.stringify(
       {
         readonly: true,
-        collaborationBranch,
+        integrationBranch,
         baseline,
         coverage: {
           worktreeBranches: knownTrees,
