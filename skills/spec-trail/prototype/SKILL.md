@@ -97,7 +97,7 @@ node .agents/skills/spec-trail/prototype/scripts/validate.mjs
 node .agents/skills/spec-trail/prototype/scripts/validate.mjs --browser
 ```
 
-浏览器检查使用宿主安装的 Playwright；可用 --playwright 指向已有模块。静态检查不代替浏览器检查，初始加载也不代替关键交互及各声明视口验证。宿主可按视口提供截图引用，缺失时总览使用占位；不要求 OpenFolio 服务联网截图。
+浏览器检查使用宿主安装的 Playwright；可用 --playwright 指向已有模块。静态检查不代替浏览器检查，初始加载也不代替关键交互及各声明视口验证。OpenFolio 自动生成托管原型截图，项目提供的截图优先覆盖对应视口。
 
 ## Git 兜底
 
