@@ -84,7 +84,7 @@ node .agents/skills/spec-trail/prototype/scripts/publish.mjs register --request 
 
 OpenFolio 上传失败可原请求重试；上传成功但本地登记失败时，使用保存的 request/result 重试 register。成功后提交引用；临时协议文件放仓库外，普通 dist 不提交。
 
-引用提交推送后，按[分享链接](../references/sharing.md)匿名验证并主动提供定位此原型的 Change 阅读链接。
+引用提交推送后，按[分享链接](../references/sharing.md)直接提供定位此原型的 Change 阅读链接。
 
 ## 嵌入与验证
 
